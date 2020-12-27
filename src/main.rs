@@ -1,4 +1,5 @@
 use hyper::{body::to_bytes, Body, Client, Request};
+use hyper_rustls::HttpsConnector;
 use netlify_lambda::{lambda, Context};
 use serde_json::{json, Value};
 use std::{env, error::Error};
@@ -20,7 +21,8 @@ async fn main(event: Value, _context: Context) -> Result<Value, LambdaError> {
 
     let webhook_token = env::var("WEBHOOK_TOKEN")?;
 
-    let client = Client::new();
+    let https = HttpsConnector::with_native_roots();
+    let client = Client::builder().build(https);
     let req = Request::builder()
         .method("POST")
         .uri(format!(
