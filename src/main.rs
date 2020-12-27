@@ -1,10 +1,17 @@
-use hyper::{body::to_bytes, Body, Client, Request};
+use hyper::{body::to_bytes, client::HttpConnector, Body, Client, Request};
 use hyper_rustls::HttpsConnector;
+use lazy_static::lazy_static;
 use netlify_lambda::{lambda, Context};
 use serde_json::{json, Value};
 use std::{env, error::Error};
 
 type LambdaError = Box<dyn Error + Sync + Send + 'static>;
+
+lazy_static! {
+    static ref WEBHOOK_TOKEN: String = env::var("WEBHOOK_TOKEN").unwrap();
+    static ref CLIENT: Client<HttpsConnector<HttpConnector>> =
+        Client::builder().build(HttpsConnector::with_native_roots());
+}
 
 #[lambda]
 #[tokio::main]
@@ -18,16 +25,15 @@ async fn main(event: Value, _context: Context) -> Result<Value, LambdaError> {
         }
     });
 
-    let client = Client::builder().build(HttpsConnector::with_native_roots());
     let req = Request::builder()
         .method("POST")
         .uri(format!(
             "https://discord.com/api/webhooks/792425523639746611/{}",
-            env::var("WEBHOOK_TOKEN")?
+            *WEBHOOK_TOKEN
         ))
         .header("Content-Type", "application/json")
         .body(Body::from(payload.to_string()))?;
-    let (parts, body) = client.request(req).await?.into_parts();
+    let (parts, body) = CLIENT.request(req).await?.into_parts();
 
     println!(
         "{}",
