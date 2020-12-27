@@ -1,33 +1,17 @@
 use hyper::{body::to_bytes, Body, Client, Request};
 use netlify_lambda::{lambda, Context};
 use serde_json::{json, Value};
-use std::error::Error;
-use std::{env, fmt};
+use std::{env, error::Error};
 
 type LambdaError = Box<dyn Error + Sync + Send + 'static>;
-
-#[derive(Debug)]
-struct UnexpectedJSONFormatError;
-
-impl Error for UnexpectedJSONFormatError {}
-
-impl fmt::Display for UnexpectedJSONFormatError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(
-            "an error occurred when reading a JSON due to unexpected format",
-            f,
-        )
-    }
-}
 
 #[lambda]
 #[tokio::main]
 async fn main(event: Value, _context: Context) -> Result<Value, LambdaError> {
-    let &message = &event["Records"][0]["Sns"]["Message"]
-        .as_str()
-        .ok_or(UnexpectedJSONFormatError)?;
+    let message = &event["Records"][0]["Sns"]["Message"];
+
     let payload = json!({
-        "content": "<@&678974055365476392>\n".to_owned() + message,
+        "content": format!("<@&678974055365476392>\n{}", message),
         "allowed_mentions": {
             "roles": ["678974055365476392"]
         }
