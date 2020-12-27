@@ -17,20 +17,16 @@ async fn main(event: Value, _context: Context) -> Result<Value, LambdaError> {
             "roles": ["678974055365476392"]
         }
     });
-    let body = payload.to_string();
 
-    let webhook_token = env::var("WEBHOOK_TOKEN")?;
-
-    let https = HttpsConnector::with_native_roots();
-    let client = Client::builder().build(https);
+    let client = Client::builder().build(HttpsConnector::with_native_roots());
     let req = Request::builder()
         .method("POST")
         .uri(format!(
             "https://discord.com/api/webhooks/792425523639746611/{}",
-            webhook_token
+            env::var("WEBHOOK_TOKEN")?
         ))
         .header("Content-Type", "application/json")
-        .body(Body::from(body))?;
+        .body(Body::from(payload.to_string()))?;
     let (parts, body) = client.request(req).await?.into_parts();
 
     println!(
