@@ -1,5 +1,6 @@
-AWS SNS to Discord WebHook
+sns-discord
 ========
+A simple lambda function which subscribes AWS SNS to ping Femiwiki's Discord webhook.
 
 ```bash
 rustup target add x86_64-unknown-linux-musl
