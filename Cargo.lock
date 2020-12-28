@@ -45,8 +45,8 @@ version = "0.1.0"
 dependencies = [
  "hyper",
  "hyper-rustls",
- "lazy_static",
  "netlify_lambda",
+ "once_cell",
  "serde_json",
  "tokio",
 ]
