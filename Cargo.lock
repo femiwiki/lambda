@@ -270,9 +270,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-rustls"
-version = "0.22.0"
+version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c152aa96df7738c6e6d39a81dc304f940093637e150d9c8c4028c2028608dafb"
+checksum = "5f9f7a97316d44c0af9b0301e65010573a853a9fc97046d7331d7f6bc0fd5a64"
 dependencies = [
  "ct-logs",
  "futures-util",
