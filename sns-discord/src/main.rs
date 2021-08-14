@@ -28,17 +28,23 @@ async fn func(event: Value, _context: Context) -> Result<Value, Error> {
     //
     let maybe_message = event["Records"][0]["Sns"]["Message"].as_str();
     let (notify, summary, dump) = if let Some(message) = maybe_message {
-        // TODO: Handle error in here
-        let json: Value = serde_json::from_str(message)?;
-        let state = &json["NewStateValue"];
-        let dump = serde_json::to_string_pretty(&json)?;
+        // Check if message is valid JSON
+        match serde_json::from_str::<Value>(message) {
+            Ok(json) => {
+                let state = &json["NewStateValue"];
+                let dump = serde_json::to_string_pretty(&json)?;
 
-        if state == "ALARM" {
-            (true, "알림이 발생하였습니다.", dump)
-        } else if state == "OK" {
-            (false, "알림 하나가 정상화 되었습니다.", dump)
-        } else {
-            (true, "", dump)
+                if state == "ALARM" {
+                    (true, "알림이 발생하였습니다.", dump)
+                } else if state == "OK" {
+                    (false, "알림 하나가 정상화 되었습니다.", dump)
+                } else {
+                    (true, "", dump)
+                }
+            }
+            Err(_) => {
+                (true, "", message.to_string())
+            }
         }
     } else {
         let dump = serde_json::to_string_pretty(&event)?;
