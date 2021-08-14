@@ -42,9 +42,7 @@ async fn func(event: Value, _context: Context) -> Result<Value, Error> {
                     (true, "", dump)
                 }
             }
-            Err(_) => {
-                (true, "", message.to_string())
-            }
+            Err(_) => (true, "", message.to_string()),
         }
     } else {
         let dump = serde_json::to_string_pretty(&event)?;
