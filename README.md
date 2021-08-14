@@ -3,7 +3,10 @@ sns-discord
 A simple lambda function which subscribes AWS SNS to ping Femiwiki's Discord webhook.
 
 ```bash
-# You need musl toolchain
+# You need musl toolchain, in Ubuntu:
+sudo apt-get install musl-tools
+
+# Install musl target
 rustup target add x86_64-unknown-linux-musl
 
 # Build
