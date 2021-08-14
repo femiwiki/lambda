@@ -1,6 +1,6 @@
-sns-discord
+lambda
 ========
-A simple lambda function which subscribes AWS SNS to ping Femiwiki's Discord webhook.
+A monorepo of Femiwiki's AWS Lambda functions.
 
 ```bash
 # You need musl toolchain, in Ubuntu:
@@ -28,7 +28,7 @@ aws lambda update-function-code --function-name DiscordNoti \
 
 --------
 
-The source code of *femiwiki/sns-discord* is primarily distributed under the
+The source code of *femiwiki/lambda* is primarily distributed under the
 terms of the [GNU Affero General Public License v3.0] or any later version. See
 [COPYRIGHT] for details.
 
