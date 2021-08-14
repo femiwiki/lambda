@@ -10,7 +10,7 @@ sudo apt-get install musl-tools
 rustup target add x86_64-unknown-linux-musl
 
 # Build
-cargo build
+cargo build --release
 
 # Publish
 zip -j lambda.zip target/x86_64-unknown-linux-musl/release/sns-discord
