@@ -1,18 +1,21 @@
 use hyper::{body::to_bytes, client::HttpConnector, Body, Client, Request};
 use hyper_rustls::HttpsConnector;
-use netlify_lambda::{lambda, Context};
+use lambda_runtime::{handler_fn, Context, Error};
 use once_cell::sync::OnceCell;
 use serde_json::{json, Value};
-use std::{env, error::Error};
-
-type LambdaError = Box<dyn Error + Sync + Send + 'static>;
+use std::env;
 
 static WEBHOOK_TOKEN: OnceCell<String> = OnceCell::new();
 static CLIENT: OnceCell<Client<HttpsConnector<HttpConnector>>> = OnceCell::new();
 
-#[lambda]
 #[tokio::main]
-async fn main(event: Value, _context: Context) -> Result<Value, LambdaError> {
+async fn main() -> Result<(), Error> {
+    let func = handler_fn(func);
+    lambda_runtime::run(func).await?;
+    Ok(())
+}
+
+async fn func(event: Value, _context: Context) -> Result<Value, Error> {
     let webhook_token = WEBHOOK_TOKEN.get_or_try_init(|| env::var("WEBHOOK_TOKEN"))?;
     let client =
         CLIENT.get_or_init(|| Client::builder().build(HttpsConnector::with_native_roots()));
