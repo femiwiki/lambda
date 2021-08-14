@@ -12,15 +12,16 @@ rustup target add x86_64-unknown-linux-musl
 # Build
 cargo build --release
 
-# Publish
+# Make into zip file
 cp target/x86_64-unknown-linux-musl/release/sns-discord bootstrap
 zip -j lambda.zip bootstrap
 rm bootstrap
-aws lambda update-function-code \
-  --region us-east-1 \
-  --function-name DiscordNoti \
-  --zip-file fileb://lambda.zip \
-  --publish
+
+# Publish
+aws lambda update-function-code --function-name DiscordNoti \
+  --zip-file fileb://lambda.zip --publish --region us-east-1
+aws lambda update-function-code --function-name DiscordNoti \
+  --zip-file fileb://lambda.zip --publish --region ap-northeast-1
 ```
 
 &nbsp;
