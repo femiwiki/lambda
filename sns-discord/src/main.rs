@@ -16,19 +16,55 @@ async fn main() -> Result<(), Error> {
 }
 
 async fn func(event: Value, _context: Context) -> Result<Value, Error> {
+    //
+    // Initialize global variable
+    //
     let webhook_token = WEBHOOK_TOKEN.get_or_try_init(|| env::var("WEBHOOK_TOKEN"))?;
     let client =
         CLIENT.get_or_init(|| Client::builder().build(HttpsConnector::with_native_roots()));
 
-    let message = &event["Records"][0]["Sns"]["Message"];
+    //
+    // Parse a message from event
+    //
+    let maybe_message = event["Records"][0]["Sns"]["Message"].as_str();
+    let (notify, summary, dump) = if let Some(message) = maybe_message {
+        // TODO: Handle error in here
+        let json: Value = serde_json::from_str(message)?;
+        let state = &json["NewStateValue"];
+        let dump = serde_json::to_string_pretty(&json)?;
 
+        if state == "ALARM" {
+            (true, "알림이 발생하였습니다.", dump)
+        } else if state == "OK" {
+            (false, "알림 하나가 정상화 되었습니다.", dump)
+        } else {
+            (true, "", dump)
+        }
+    } else {
+        let dump = serde_json::to_string_pretty(&event)?;
+        (true, "알지 못하는 유형의 이벤트가 발생했습니다.", dump)
+    };
+
+    let content = format!(
+        "{}{}\n```json\n{}\n```",
+        if notify {
+            "<@&678974055365476392> "
+        } else {
+            ""
+        },
+        summary,
+        dump
+    );
+
+    //
+    // Send alarm to the Discord
+    //
     let payload = json!({
-        "content": format!("<@&678974055365476392>\n{}", message),
+        "content": content,
         "allowed_mentions": {
             "roles": ["678974055365476392"]
         }
     });
-
     let req = Request::builder()
         .method("POST")
         .uri(format!(
@@ -39,10 +75,13 @@ async fn func(event: Value, _context: Context) -> Result<Value, Error> {
         .body(Body::from(payload.to_string()))?;
     let (parts, body) = client.request(req).await?.into_parts();
 
+    //
+    // Leave a log to cloudtrail
+    //
     println!(
         "{}",
         json!({
-            "message": message,
+            "event": event,
             "status_code": parts.status.as_u16(),
             "response": to_bytes(body).await?.to_vec(),
         })
