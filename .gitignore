@@ -2,4 +2,5 @@
 /target
 
 # AWS Lambda ZIP file
+/bootstrap
 /lambda.zip

@@ -31,7 +31,8 @@ jobs:
     - run: rustup target add x86_64-unknown-linux-musl
     - run: sudo apt-get install musl-tools
     - run: cargo fmt --all -- --check
-    - run: cargo build --release && zip -j lambda.zip target/x86_64-unknown-linux-musl/release/sns-discord
+    - run: cargo build --release
+    - run: cp target/x86_64-unknown-linux-musl/release/sns-discord bootstrap && zip -j lambda.zip bootstrap && rm bootstrap
     - run: cargo test
     - run: cargo clippy -- -D warnings
 

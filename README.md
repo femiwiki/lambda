@@ -13,7 +13,9 @@ rustup target add x86_64-unknown-linux-musl
 cargo build --release
 
 # Publish
-zip -j lambda.zip target/x86_64-unknown-linux-musl/release/sns-discord
+cp target/x86_64-unknown-linux-musl/release/sns-discord bootstrap
+zip -j lambda.zip bootstrap
+rm bootstrap
 aws lambda update-function-code \
   --region us-east-1 \
   --function-name DiscordNoti \
