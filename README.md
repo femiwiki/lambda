@@ -1,5 +1,5 @@
-lambda
-========
+# lambda
+
 A monorepo of Femiwiki's AWS Lambda functions.
 
 ```bash
@@ -26,11 +26,11 @@ aws lambda update-function-code --function-name DiscordNoti \
 
 &nbsp;
 
---------
+---
 
-The source code of *femiwiki/lambda* is primarily distributed under the
+The source code of _femiwiki/lambda_ is primarily distributed under the
 terms of the [GNU Affero General Public License v3.0] or any later version. See
 [COPYRIGHT] for details.
 
-[GNU Affero General Public License v3.0]: LICENSE
-[COPYRIGHT]: COPYRIGHT
+[gnu affero general public license v3.0]: LICENSE
+[copyright]: COPYRIGHT
