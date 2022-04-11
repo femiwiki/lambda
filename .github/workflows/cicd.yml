@@ -46,10 +46,9 @@ jobs:
     runs-on: ubuntu
     steps:
     - uses: actions/checkout@v2
-    - uses: creyD/prettier_action@v4.2
+    - uses: actionsx/prettier@v2
       with:
-        dry: true
-        prettier_options: --check **/*.{md,yaml,yml}
+        args: --check **/*.{md,yaml,yml}
 
 
   deploy:
