@@ -51,6 +51,11 @@ jobs:
     needs:
       - test
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        region:
+        - us-east-1
+        - ap-northeast-1
     steps:
     - uses: actions/download-artifact@v3
       with:
@@ -61,15 +66,11 @@ jobs:
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ matrix.region }}
 
     - run: |
         aws lambda update-function-code \
           --function-name DiscordNoti \
           --zip-file fileb://lambda.zip \
-          --region us-east-1 \
-          --publish
-        aws lambda update-function-code \
-          --function-name DiscordNoti \
-          --zip-file fileb://lambda.zip \
-          --region ap-northeast-1 \
+          --region "${{ matrix.region }}" \
           --publish
