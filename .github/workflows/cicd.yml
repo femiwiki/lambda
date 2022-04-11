@@ -43,7 +43,7 @@ jobs:
         path: lambda.zip
 
   fmt-prettier:
-    runs-on: ubuntu
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
     - uses: actionsx/prettier@v2
