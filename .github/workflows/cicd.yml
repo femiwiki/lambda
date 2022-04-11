@@ -42,6 +42,15 @@ jobs:
         name: build
         path: lambda.zip
 
+  fmt-prettier:
+    runs-on: ubuntu
+    steps:
+    - uses: actions/checkout@v2
+    - uses: creyD/prettier_action@v4.2
+      with:
+        dry: true
+        prettier_options: --check **/*.{md,yaml,yml}
+
 
   deploy:
     if: |
