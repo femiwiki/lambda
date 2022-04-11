@@ -7,41 +7,48 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+      - name: Cache toolchains and crates
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.rustup/settings.toml
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: toolchains-and-crates-${{ runner.os }}
 
-    - name: Cache toolchains and crates
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.rustup/settings.toml
-          ~/.rustup/toolchains
-          ~/.rustup/update-hashes
-          ~/.cargo/registry
-          ~/.cargo/git
-        key: toolchains-and-crates-${{ runner.os }}
+      - uses: actions/checkout@v3
 
-    - uses: actions/checkout@v3
+      - name: Cache build results
+        uses: actions/cache@v3
+        with:
+          path: target
+          key: build-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
-    - name: Cache build results
-      uses: actions/cache@v3
-      with:
-        path: target
-        key: build-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+      - run: rustup target add x86_64-unknown-linux-musl
+      - run: sudo apt-get install musl-tools
+      - run: cargo fmt --all -- --check
+        continue-on-error: true
+      - run: cargo build --release
+      - run: |
+          cp target/x86_64-unknown-linux-musl/release/sns-discord bootstrap
+          zip -j lambda.zip bootstrap && rm bootstrap
+      - run: cargo test
+      - run: cargo clippy -- -D warnings
+      - uses: actions/upload-artifact@v3
+        with:
+          name: build
+          path: lambda.zip
 
-    - run: rustup target add x86_64-unknown-linux-musl
-    - run: sudo apt-get install musl-tools
-    - run: cargo fmt --all -- --check
-      continue-on-error: true
-    - run: cargo build --release
-    - run: |
-        cp target/x86_64-unknown-linux-musl/release/sns-discord bootstrap
-        zip -j lambda.zip bootstrap && rm bootstrap
-    - run: cargo test
-    - run: cargo clippy -- -D warnings
-    - uses: actions/upload-artifact@v3
-      with:
-        name: build
-        path: lambda.zip
-
+  fmt-prettier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: creyD/prettier_action@v4.2
+        with:
+          dry: true
+          prettier_options: --check **/*.{md,yaml,yml}
 
   deploy:
     if: |
@@ -54,23 +61,23 @@ jobs:
     strategy:
       matrix:
         region:
-        - us-east-1
-        - ap-northeast-1
+          - us-east-1
+          - ap-northeast-1
     steps:
-    - uses: actions/download-artifact@v3
-      with:
-        name: build
+      - uses: actions/download-artifact@v3
+        with:
+          name: build
 
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v1
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ matrix.region }}
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ matrix.region }}
 
-    - run: |
-        aws lambda update-function-code \
-          --function-name DiscordNoti \
-          --zip-file fileb://lambda.zip \
-          --region "${{ matrix.region }}" \
-          --publish
+      - run: |
+          aws lambda update-function-code \
+            --function-name DiscordNoti \
+            --zip-file fileb://lambda.zip \
+            --region "${{ matrix.region }}" \
+            --publish
