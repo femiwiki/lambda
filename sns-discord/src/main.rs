@@ -117,9 +117,8 @@ fn parse_message(event: &Value) -> Result<PostData, Error> {
                         .unwrap_or("(메시지에 NewStateReason이 없습니다)"),
                 );
                 let fields = message_to_fields(&json);
-                let dump = serde_json::to_string_pretty(&json)?;
 
-                (notify, color, reason, fields, dump)
+                (notify, color, reason, fields, String::new())
             }
             Err(_) => (true, RED, String::new(), Vec::new(), message.to_string()),
         }
