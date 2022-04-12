@@ -5,8 +5,23 @@ use once_cell::sync::OnceCell;
 use serde_json::{json, Value};
 use std::env;
 
+static RED: u32 = 0xe83535;
+static GREEN: u32 = 0x2daf32;
 static WEBHOOK_TOKEN: OnceCell<String> = OnceCell::new();
 static CLIENT: OnceCell<Client<HttpsConnector<HttpConnector>>> = OnceCell::new();
+
+#[derive(Debug)]
+struct Embed {
+    color: u32,
+    description: String,
+}
+
+#[derive(Debug)]
+struct PostData {
+    content: String,
+    // We now only ship one embed, not multiple.
+    embed: Embed,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -23,8 +38,8 @@ async fn func(event: Value, _context: Context) -> Result<Value, Error> {
     let client =
         CLIENT.get_or_init(|| Client::builder().build(HttpsConnector::with_native_roots()));
 
-    let content = match parse_message(&event) {
-        Ok(content) => content,
+    let post_data = match parse_message(&event) {
+        Ok(post_data) => post_data,
         Err(e) => return Err(e),
     };
 
@@ -32,7 +47,11 @@ async fn func(event: Value, _context: Context) -> Result<Value, Error> {
     // Send alarm to the Discord
     //
     let payload = json!({
-        "content": content,
+        "content": post_data.content,
+        "embeds": [{
+            "color": post_data.embed.color,
+            "description": post_data.embed.description,
+        }],
         "allowed_mentions": {
             "roles": ["678974055365476392"]
         },
@@ -63,7 +82,7 @@ async fn func(event: Value, _context: Context) -> Result<Value, Error> {
 }
 
 /// Parse a message from event
-fn parse_message(event: &Value) -> Result<String, Error> {
+fn parse_message(event: &Value) -> Result<PostData, Error> {
     let maybe_message = event["Records"][0]["Sns"]["Message"].as_str();
     let (notify, summary, dump) = if let Some(message) = maybe_message {
         // Check if message is valid JSON
@@ -72,7 +91,9 @@ fn parse_message(event: &Value) -> Result<String, Error> {
                 let state = &json["NewStateValue"];
                 let dump = serde_json::to_string_pretty(&json)?;
 
-                if state == "ALARM" {
+                if &json["AlarmName"] == "_Test" {
+                    (false, "수동으로 작성된 테스트 알림입니다.", dump)
+                } else if state == "ALARM" {
                     (true, "알림이 발생하였습니다.", dump)
                 } else if state == "OK" {
                     (false, "알림 하나가 정상화 되었습니다.", dump)
@@ -88,17 +109,22 @@ fn parse_message(event: &Value) -> Result<String, Error> {
     };
 
     let content = format!(
-        "{}{}\n```json\n{}\n```",
+        "{}{}",
         if notify {
             "<@&678974055365476392> "
         } else {
             ""
         },
-        summary,
-        dump
+        summary
     );
 
-    Ok(content)
+    Ok(PostData {
+        content,
+        embed: Embed {
+            color: if notify { RED } else { GREEN },
+            description: format!("```json\n{}\n```", dump),
+        },
+    })
 }
 
 #[cfg(test)]
@@ -108,33 +134,29 @@ mod tests {
     #[test]
     fn test_parse_message() {
         assert_eq!(
-            parse_message(&serde_json::from_str::<Value>("\"arbitrary\"").unwrap()).unwrap(),
-            "<@&678974055365476392> 알지 못하는 유형의 이벤트가 발생했습니다.\n```json\n\"arbitrary\"\n```".to_string()
+            parse_message(&json!("arbitrary")).unwrap().content,
+            "<@&678974055365476392> 알지 못하는 유형의 이벤트가 발생했습니다.".to_string(),
+            "An arbitrary message should be parsed as an alarm."
         );
 
         assert_eq!(
-            parse_message(
-                &serde_json::from_str::<Value>(
-                    r#"
-                {
-                    "Records": [{
-                        "Sns": {
-                            "Message": "{\"NewStateValue\":\"ALARM\"}"
-                        }
-                    }]
-                }
-                "#,
-                )
-                .unwrap()
-            )
-            .unwrap(),
-            "<@&678974055365476392> 알림이 발생하였습니다.\n```json\n{\n  \"NewStateValue\": \"ALARM\"\n}\n```".to_string()
+            parse_message(&json!(
+            {
+                "Records": [{
+                    "Sns": {
+                        "Message": "{\"NewStateValue\":\"ALARM\"}"
+                    }
+                }]
+            }
+            ))
+            .unwrap()
+            .content,
+            "<@&678974055365476392> 알림이 발생하였습니다.".to_string(),
+            "An alarm should be parsed as an alarm."
         );
 
         assert_eq!(
-            parse_message(
-                &serde_json::from_str::<Value>(
-                    r#"
+            parse_message(&json!(
                 {
                     "Records": [{
                         "Sns": {
@@ -142,13 +164,27 @@ mod tests {
                         }
                     }]
                 }
-                "#,
-                )
-                .unwrap()
-            )
-            .unwrap(),
-            "알림 하나가 정상화 되었습니다.\n```json\n{\n  \"NewStateValue\": \"OK\"\n}\n```"
-                .to_string()
+            ))
+            .unwrap()
+            .content,
+            "알림 하나가 정상화 되었습니다.".to_string(),
+            "An OK should be parsed as an OK."
+        );
+
+        assert_eq!(
+            parse_message(&json!(
+                {
+                    "Records": [{
+                        "Sns": {
+                            "Message": "{\"AlarmName\": \"_Test\",\"NewStateValue\":\"OK\"}"
+                        }
+                    }]
+                }
+            ))
+            .unwrap()
+            .content,
+            "수동으로 작성된 테스트 알림입니다.".to_string(),
+            "A test alarm should be parsed as a test alarm."
         );
     }
 }
