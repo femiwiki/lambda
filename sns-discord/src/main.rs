@@ -91,7 +91,11 @@ fn parse_message(event: &Value) -> Result<PostData, Error> {
                 let state = &json["NewStateValue"];
                 let notify = state != "OK" && &json["AlarmName"] != "_Test";
                 let dump = serde_json::to_string_pretty(&json)?;
-                let reason = String::from(json["NewStateReason"].as_str().unwrap_or("(NewStateReason 없음)"));
+                let reason = String::from(
+                    json["NewStateReason"]
+                        .as_str()
+                        .unwrap_or("(NewStateReason 없음)"),
+                );
 
                 (notify, reason, dump)
             }
