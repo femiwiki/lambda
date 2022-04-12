@@ -60,7 +60,10 @@ async fn func(event: Value, _context: Context) -> Result<Value, Error> {
         "embeds": [{
             "color": post_data.embed.color,
             "description": post_data.embed.description,
-            "fields": post_data.embed.fields,
+            "fields": match serde_json::to_value(&post_data.embed.fields) {
+                Ok(v) => v,
+                Err(_) => Value::Null,
+            },
         }],
         "allowed_mentions": {
             "roles": ["678974055365476392"]
