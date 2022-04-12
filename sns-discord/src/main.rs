@@ -147,7 +147,11 @@ fn parse_message(event: &Value) -> Result<PostData, Error> {
         content,
         embed: Embed {
             color,
-            description: format!("```json\n{}\n```", dump),
+            description: if !dump.is_empty() {
+                format!("```json\n{}\n```", dump)
+            } else {
+                String::new()
+            },
             fields,
         },
     })
