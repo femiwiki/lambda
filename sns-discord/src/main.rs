@@ -103,12 +103,10 @@ fn parse_message(event: &Value) -> Result<PostData, Error> {
                 let notify = state != "OK" && !test;
                 let color = if test {
                     GRAY
+                } else if notify {
+                    RED
                 } else {
-                    if notify {
-                        RED
-                    } else {
-                        GREEN
-                    }
+                    GREEN
                 };
                 let reason = String::from(
                     json["NewStateReason"]
@@ -165,7 +163,7 @@ fn message_to_fields(message: &Value) -> Vec<Field> {
                 value: if value.is_string() {
                     String::from(value.as_str().unwrap_or(""))
                 } else {
-                    format!("```json\n{}\n```", value.to_string())
+                    format!("```json\n{}\n```", value)
                 },
                 inline: true,
             });
