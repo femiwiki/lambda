@@ -90,22 +90,36 @@ fn parse_message(event: &Value) -> Result<PostData, Error> {
             Ok(json) => {
                 let state = &json["NewStateValue"];
                 let dump = serde_json::to_string_pretty(&json)?;
+                let notify = &json["AlarmName"] != "_Test" && state == "ALARM";
 
-                if &json["AlarmName"] == "_Test" {
-                    (false, "수동으로 작성된 테스트 알림입니다.", dump)
-                } else if state == "ALARM" {
-                    (true, "알림이 발생하였습니다.", dump)
+                if state == "ALARM" {
+                    (
+                        notify,
+                        format!("알림이 발생하였습니다. ({})", &json["NewStateReason"]),
+                        dump,
+                    )
                 } else if state == "OK" {
-                    (false, "알림 하나가 정상화 되었습니다.", dump)
+                    (
+                        notify,
+                        format!(
+                            "알림 하나가 정상화 되었습니다. ({})",
+                            &json["NewStateReason"]
+                        ),
+                        dump,
+                    )
                 } else {
-                    (true, "", dump)
+                    (true, String::new(), dump)
                 }
             }
-            Err(_) => (true, "", message.to_string()),
+            Err(_) => (true, String::new(), message.to_string()),
         }
     } else {
         let dump = serde_json::to_string_pretty(&event)?;
-        (true, "알지 못하는 유형의 이벤트가 발생했습니다.", dump)
+        (
+            true,
+            "알지 못하는 유형의 이벤트가 발생했습니다.".to_string(),
+            dump,
+        )
     };
 
     let content = format!(
@@ -144,14 +158,16 @@ mod tests {
             {
                 "Records": [{
                     "Sns": {
-                        "Message": "{\"NewStateValue\":\"ALARM\"}"
+                        "Message": json!({
+                            "NewStateValue":"ALARM",
+                        }).to_string()
                     }
                 }]
             }
             ))
             .unwrap()
             .content,
-            "<@&678974055365476392> 알림이 발생하였습니다.".to_string(),
+            "<@&678974055365476392> 알림이 발생하였습니다. (null)".to_string(),
             "An alarm should be parsed as an alarm."
         );
 
@@ -160,14 +176,16 @@ mod tests {
                 {
                     "Records": [{
                         "Sns": {
-                            "Message": "{\"NewStateValue\":\"OK\"}"
+                            "Message": json!({
+                                "NewStateValue":"OK",
+                            }).to_string()
                         }
                     }]
                 }
             ))
             .unwrap()
             .content,
-            "알림 하나가 정상화 되었습니다.".to_string(),
+            "알림 하나가 정상화 되었습니다. (null)".to_string(),
             "An OK should be parsed as an OK."
         );
 
@@ -176,14 +194,18 @@ mod tests {
                 {
                     "Records": [{
                         "Sns": {
-                            "Message": "{\"AlarmName\": \"_Test\",\"NewStateValue\":\"OK\"}"
+                            "Message": json!({
+                                "AlarmName": "_Test",
+                                "NewStateValue":"OK",
+                                "NewStateReason":"테스트",
+                            }).to_string()
                         }
                     }]
                 }
             ))
             .unwrap()
             .content,
-            "수동으로 작성된 테스트 알림입니다.".to_string(),
+            "알림 하나가 정상화 되었습니다. (\"테스트\")".to_string(),
             "A test alarm should be parsed as a test alarm."
         );
     }
