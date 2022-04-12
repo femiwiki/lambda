@@ -2,6 +2,7 @@ use hyper::{body::to_bytes, client::HttpConnector, Body, Client, Request};
 use hyper_rustls::HttpsConnector;
 use lambda_runtime::{handler_fn, Context, Error};
 use once_cell::sync::OnceCell;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::env;
 
@@ -11,10 +12,17 @@ static GRAY: u32 = 0xb3b4bc;
 static WEBHOOK_TOKEN: OnceCell<String> = OnceCell::new();
 static CLIENT: OnceCell<Client<HttpsConnector<HttpConnector>>> = OnceCell::new();
 
+#[derive(Serialize, Deserialize, Debug)]
+struct Field {
+    name: String,
+    value: String,
+    inline: bool,
+}
 #[derive(Debug)]
 struct Embed {
     color: u32,
     description: String,
+    fields: Vec<Field>,
 }
 
 #[derive(Debug)]
@@ -52,6 +60,7 @@ async fn func(event: Value, _context: Context) -> Result<Value, Error> {
         "embeds": [{
             "color": post_data.embed.color,
             "description": post_data.embed.description,
+            "fields": post_data.embed.fields,
         }],
         "allowed_mentions": {
             "roles": ["678974055365476392"]
@@ -85,7 +94,7 @@ async fn func(event: Value, _context: Context) -> Result<Value, Error> {
 /// Parse a message from event
 fn parse_message(event: &Value) -> Result<PostData, Error> {
     let maybe_message = event["Records"][0]["Sns"]["Message"].as_str();
-    let (notify, color, summary, dump) = if let Some(message) = maybe_message {
+    let (notify, color, summary, fields, dump) = if let Some(message) = maybe_message {
         // Check if message is valid JSON
         match serde_json::from_str::<Value>(message) {
             Ok(json) => {
@@ -106,11 +115,12 @@ fn parse_message(event: &Value) -> Result<PostData, Error> {
                         .as_str()
                         .unwrap_or("(메시지에 NewStateReason이 없습니다)"),
                 );
+                let fields = message_to_fields(&json);
                 let dump = serde_json::to_string_pretty(&json)?;
 
-                (notify, color, reason, dump)
+                (notify, color, reason, fields, dump)
             }
-            Err(_) => (true, RED, String::new(), message.to_string()),
+            Err(_) => (true, RED, String::new(), Vec::new(), message.to_string()),
         }
     } else {
         let dump = serde_json::to_string_pretty(&event)?;
@@ -118,6 +128,7 @@ fn parse_message(event: &Value) -> Result<PostData, Error> {
             true,
             RED,
             "알지 못하는 유형의 이벤트가 발생했습니다.".to_string(),
+            Vec::new(),
             dump,
         )
     };
@@ -137,8 +148,30 @@ fn parse_message(event: &Value) -> Result<PostData, Error> {
         embed: Embed {
             color,
             description: format!("```json\n{}\n```", dump),
+            fields,
         },
     })
+}
+
+fn message_to_fields(message: &Value) -> Vec<Field> {
+    let mut fields: Vec<Field> = Vec::new();
+    if let Some(obj) = message.as_object() {
+        for (key, value) in obj.iter() {
+            if key == "NewStateReason" {
+                continue;
+            }
+            fields.push(Field {
+                name: key.to_string(),
+                value: if value.is_string() {
+                    String::from(value.as_str().unwrap_or(""))
+                } else {
+                    format!("```json\n{}\n```", value.to_string())
+                },
+                inline: true,
+            });
+        }
+    }
+    fields
 }
 
 #[cfg(test)]
@@ -269,5 +302,25 @@ mod tests {
             "A test alarm should be parsed as a test alarm."
         );
         assert_eq!(post_data.embed.color, GRAY,);
+    }
+
+    #[test]
+    fn message_to_fields_test() {
+        let mut fields;
+
+        fields = message_to_fields(&json!({
+            "NewStateValue": "ALARM",
+            "OldStateValue": "OK",
+            "NewStateReason": "Threshold Crossed: 1 out of the last 1 datapoints [71.58514626666667 (09/04/22 21:01:00)] was less than the threshold (72.0) (minimum 1 datapoint for OK -> ALARM transition).",
+        }));
+        assert_eq!(fields.len(), 2, "NewStateReason should be removed");
+        assert_eq!(fields[1].value, "OK",);
+
+        fields = message_to_fields(&json!({
+            "InsufficientDataActions": [],
+            "OKActions": [],
+        }));
+        assert_eq!(fields.len(), 2,);
+        assert_eq!(fields[1].value, "```json\n[]\n```",);
     }
 }
