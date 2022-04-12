@@ -23,9 +23,47 @@ async fn func(event: Value, _context: Context) -> Result<Value, Error> {
     let client =
         CLIENT.get_or_init(|| Client::builder().build(HttpsConnector::with_native_roots()));
 
+    let content = match parse_message(&event) {
+        Ok(content) => content,
+        Err(e) => return Err(e),
+    };
+
     //
-    // Parse a message from event
+    // Send alarm to the Discord
     //
+    let payload = json!({
+        "content": content,
+        "allowed_mentions": {
+            "roles": ["678974055365476392"]
+        },
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!(
+            "https://discord.com/api/webhooks/792425523639746611/{}",
+            webhook_token
+        ))
+        .header("Content-Type", "application/json")
+        .body(Body::from(payload.to_string()))?;
+    let (parts, body) = client.request(req).await?.into_parts();
+
+    //
+    // Leave a log to cloudtrail
+    //
+    println!(
+        "{}",
+        json!({
+            "event": event,
+            "status_code": parts.status.as_u16(),
+            "response": to_bytes(body).await?.to_vec(),
+        })
+    );
+
+    Ok(Value::Null)
+}
+
+/// Parse a message from event
+fn parse_message(event: &Value) -> Result<String, Error> {
     let maybe_message = event["Records"][0]["Sns"]["Message"].as_str();
     let (notify, summary, dump) = if let Some(message) = maybe_message {
         // Check if message is valid JSON
@@ -60,36 +98,57 @@ async fn func(event: Value, _context: Context) -> Result<Value, Error> {
         dump
     );
 
-    //
-    // Send alarm to the Discord
-    //
-    let payload = json!({
-        "content": content,
-        "allowed_mentions": {
-            "roles": ["678974055365476392"]
-        }
-    });
-    let req = Request::builder()
-        .method("POST")
-        .uri(format!(
-            "https://discord.com/api/webhooks/792425523639746611/{}",
-            webhook_token
-        ))
-        .header("Content-Type", "application/json")
-        .body(Body::from(payload.to_string()))?;
-    let (parts, body) = client.request(req).await?.into_parts();
+    Ok(content)
+}
 
-    //
-    // Leave a log to cloudtrail
-    //
-    println!(
-        "{}",
-        json!({
-            "event": event,
-            "status_code": parts.status.as_u16(),
-            "response": to_bytes(body).await?.to_vec(),
-        })
-    );
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    Ok(Value::Null)
+    #[test]
+    fn test_parse_message() {
+        assert_eq!(
+            parse_message(&serde_json::from_str::<Value>("\"arbitrary\"").unwrap()).unwrap(),
+            "<@&678974055365476392> 알지 못하는 유형의 이벤트가 발생했습니다.\n```json\n\"arbitrary\"\n```".to_string()
+        );
+
+        assert_eq!(
+            parse_message(
+                &serde_json::from_str::<Value>(
+                    r#"
+                {
+                    "Records": [{
+                        "Sns": {
+                            "Message": "{\"NewStateValue\":\"ALARM\"}"
+                        }
+                    }]
+                }
+                "#,
+                )
+                .unwrap()
+            )
+            .unwrap(),
+            "<@&678974055365476392> 알림이 발생하였습니다.\n```json\n{\n  \"NewStateValue\": \"ALARM\"\n}\n```".to_string()
+        );
+
+        assert_eq!(
+            parse_message(
+                &serde_json::from_str::<Value>(
+                    r#"
+                {
+                    "Records": [{
+                        "Sns": {
+                            "Message": "{\"NewStateValue\":\"OK\"}"
+                        }
+                    }]
+                }
+                "#,
+                )
+                .unwrap()
+            )
+            .unwrap(),
+            "알림 하나가 정상화 되었습니다.\n```json\n{\n  \"NewStateValue\": \"OK\"\n}\n```"
+                .to_string()
+        );
+    }
 }
