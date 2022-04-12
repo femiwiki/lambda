@@ -165,7 +165,13 @@ fn message_to_fields(message: &Value) -> Vec<Field> {
                 value: if value.is_string() {
                     String::from(value.as_str().unwrap_or(""))
                 } else {
-                    format!("```json\n{}\n```", value)
+                    format!(
+                        "```json\n{}\n```",
+                        match serde_json::to_string_pretty(&value) {
+                            Ok(v) => v,
+                            Err(_) => value.to_string(),
+                        }
+                    )
                 },
                 inline: true,
             });
