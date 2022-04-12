@@ -7,6 +7,7 @@ use std::env;
 
 static RED: u32 = 0xe83535;
 static GREEN: u32 = 0x2daf32;
+static GRAY: u32 = 0xb3b4bc;
 static WEBHOOK_TOKEN: OnceCell<String> = OnceCell::new();
 static CLIENT: OnceCell<Client<HttpsConnector<HttpConnector>>> = OnceCell::new();
 
@@ -84,27 +85,38 @@ async fn func(event: Value, _context: Context) -> Result<Value, Error> {
 /// Parse a message from event
 fn parse_message(event: &Value) -> Result<PostData, Error> {
     let maybe_message = event["Records"][0]["Sns"]["Message"].as_str();
-    let (notify, summary, dump) = if let Some(message) = maybe_message {
+    let (notify, color, summary, dump) = if let Some(message) = maybe_message {
         // Check if message is valid JSON
         match serde_json::from_str::<Value>(message) {
             Ok(json) => {
                 let state = &json["NewStateValue"];
-                let notify = state != "OK" && &json["AlarmName"] != "_Test";
-                let dump = serde_json::to_string_pretty(&json)?;
+                let test = &json["AlarmName"] == "_Test";
+                let notify = state != "OK" && !test;
+                let color = if test {
+                    GRAY
+                } else {
+                    if notify {
+                        RED
+                    } else {
+                        GREEN
+                    }
+                };
                 let reason = String::from(
                     json["NewStateReason"]
                         .as_str()
-                        .unwrap_or("(NewStateReason 없음)"),
+                        .unwrap_or("(메시지에 NewStateReason이 없습니다)"),
                 );
+                let dump = serde_json::to_string_pretty(&json)?;
 
-                (notify, reason, dump)
+                (notify, color, reason, dump)
             }
-            Err(_) => (true, String::new(), message.to_string()),
+            Err(_) => (true, RED, String::new(), message.to_string()),
         }
     } else {
         let dump = serde_json::to_string_pretty(&event)?;
         (
             true,
+            RED,
             "알지 못하는 유형의 이벤트가 발생했습니다.".to_string(),
             dump,
         )
@@ -123,7 +135,7 @@ fn parse_message(event: &Value) -> Result<PostData, Error> {
     Ok(PostData {
         content,
         embed: Embed {
-            color: if notify { RED } else { GREEN },
+            color,
             description: format!("```json\n{}\n```", dump),
         },
     })
@@ -135,14 +147,17 @@ mod tests {
 
     #[test]
     fn test_parse_message() {
+        let mut post_data;
+
+        post_data = parse_message(&json!("arbitrary")).unwrap();
         assert_eq!(
-            parse_message(&json!("arbitrary")).unwrap().content,
+            post_data.content,
             "<@&678974055365476392> 알지 못하는 유형의 이벤트가 발생했습니다.".to_string(),
             "An arbitrary message should be parsed as an alarm."
         );
+        assert_eq!(post_data.embed.color, RED,);
 
-        assert_eq!(
-            parse_message(&json!(
+        post_data = parse_message(&json!(
             {
                 "Records": [{
                     "Sns": {
@@ -154,48 +169,105 @@ mod tests {
                 }]
             }
             ))
-            .unwrap()
-            .content,
+            .unwrap();
+        assert_eq!(
+            post_data.content,
             "<@&678974055365476392> Threshold Crossed: 1 out of the last 1 datapoints was less than the threshold.".to_string(),
             "An alarm should be parsed as an alarm."
         );
+        assert_eq!(post_data.embed.color, RED,);
 
+        post_data = parse_message(&json!(
+            {
+                "Records": [{
+                    "Sns": {
+                        "Message": json!({
+                            "NewStateValue":"OK",
+                        }).to_string()
+                    }
+                }]
+            }
+        ))
+        .unwrap();
         assert_eq!(
-            parse_message(&json!(
-                {
-                    "Records": [{
-                        "Sns": {
-                            "Message": json!({
-                                "NewStateValue":"OK",
-                            }).to_string()
-                        }
-                    }]
-                }
-            ))
-            .unwrap()
-            .content,
-            "(NewStateReason 없음)".to_string(),
+            post_data.content,
+            "(메시지에 NewStateReason이 없습니다)".to_string(),
             "An OK should be parsed as an OK."
         );
+        assert_eq!(post_data.embed.color, GREEN,);
 
+        post_data = parse_message(&json!(
+            {
+                "Records": [{
+                    "Sns": {
+                        "Message": json!({
+                            "AWSAccountId": "302617221463",
+                            "AlarmActions": [
+                                "arn:aws:sns:ap-northeast-1:302617221463:CloudWatch_Alarms_Topic"
+                            ],
+                            "AlarmArn": "arn:aws:cloudwatch:ap-northeast-1:302617221463:alarm:Femiwiki CPU credit balance",
+                            "AlarmConfigurationUpdatedTimestamp": "2021-05-17T02:32:05.144+0000",
+                            "AlarmDescription": null,
+                            "AlarmName": "Femiwiki CPU credit balance",
+                            "InsufficientDataActions": [],
+                            "NewStateReason": "Threshold Crossed: 1 out of the last 1 datapoints [71.58514626666667 (09/04/22 21:01:00)] was less than the threshold (72.0) (minimum 1 datapoint for OK -> ALARM transition).",
+                            "NewStateValue": "ALARM",
+                            "OKActions": [],
+                            "OldStateValue": "OK",
+                            "Region": "Asia Pacific (Tokyo)",
+                            "StateChangeTime": "2022-04-09T21:06:48.198+0000",
+                            "Trigger": {
+                                "ComparisonOperator": "LessThanThreshold",
+                                "DatapointsToAlarm": 1,
+                                "Dimensions": [
+                                    {
+                                        "name": "InstanceId",
+                                        "value": "i-0d6c06981a9aa5112"
+                                    }
+                                ],
+                                "EvaluateLowSampleCountPercentile": "",
+                                "EvaluationPeriods": 1,
+                                "MetricName": "CPUCreditBalance",
+                                "Namespace": "AWS/EC2",
+                                "Period": 300,
+                                "Statistic": "MINIMUM",
+                                "StatisticType": "Statistic",
+                                "Threshold": 72.0,
+                                "TreatMissingData": "missing",
+                                "Unit": null
+                            }
+                          }).to_string()
+                    }
+                }]
+            }
+        ))
+        .unwrap();
         assert_eq!(
-            parse_message(&json!(
-                {
-                    "Records": [{
-                        "Sns": {
-                            "Message": json!({
-                                "AlarmName": "_Test",
-                                "NewStateValue": "OK",
-                                "NewStateReason": "테스트",
-                            }).to_string()
-                        }
-                    }]
-                }
-            ))
-            .unwrap()
-            .content,
+            post_data.content,
+            "<@&678974055365476392> Threshold Crossed: 1 out of the last 1 datapoints [71.58514626666667 (09/04/22 21:01:00)] was less than the threshold (72.0) (minimum 1 datapoint for OK -> ALARM transition).".to_string(),
+            "A test alarm should be parsed as a test alarm."
+        );
+        assert_eq!(post_data.embed.color, RED,);
+
+        post_data = parse_message(&json!(
+            {
+                "Records": [{
+                    "Sns": {
+                        "Message": json!({
+                            "AlarmName": "_Test",
+                            "NewStateValue": "OK",
+                            "NewStateReason": "테스트",
+                        }).to_string()
+                    }
+                }]
+            }
+        ))
+        .unwrap();
+        assert_eq!(
+            post_data.content,
             "테스트".to_string(),
             "A test alarm should be parsed as a test alarm."
         );
+        assert_eq!(post_data.embed.color, GRAY,);
     }
 }
