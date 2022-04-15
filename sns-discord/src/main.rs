@@ -111,14 +111,18 @@ fn parse_message(event: &Value) -> Result<PostData, Error> {
                 } else {
                     GREEN
                 };
-                let reason = String::from(
+                let summary = format!(
+                    "[{}] {}",
+                    json["AlarmName"]
+                        .as_str()
+                        .unwrap_or("(메시지에 AlarmName이 없습니다)"),
                     json["NewStateReason"]
                         .as_str()
                         .unwrap_or("(메시지에 NewStateReason이 없습니다)"),
                 );
                 let fields = message_to_fields(&json);
 
-                (notify, color, reason, fields, String::new())
+                (notify, color, summary, fields, String::new())
             }
             Err(_) => (true, RED, String::new(), Vec::new(), message.to_string()),
         }
@@ -161,7 +165,7 @@ fn message_to_fields(message: &Value) -> Vec<Field> {
     let mut fields: Vec<Field> = Vec::new();
     if let Some(obj) = message.as_object() {
         for (key, value) in obj.iter() {
-            if key == "NewStateReason" {
+            if key == "NewStateReason" || key == "AlarmName" {
                 continue;
             }
             fields.push(Field {
@@ -206,6 +210,7 @@ mod tests {
                     "Sns": {
                         "Message": json!({
                             "NewStateValue":"ALARM",
+                            "AlarmName": "Femiwiki CPU credit balance",
                             "NewStateReason": "Threshold Crossed: 1 out of the last 1 datapoints was less than the threshold.",
                         }).to_string()
                     }
@@ -215,7 +220,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             post_data.content,
-            "<@&678974055365476392> Threshold Crossed: 1 out of the last 1 datapoints was less than the threshold.".to_string(),
+            "<@&678974055365476392> [Femiwiki CPU credit balance] Threshold Crossed: 1 out of the last 1 datapoints was less than the threshold.".to_string(),
             "An alarm should be parsed as an alarm."
         );
         assert_eq!(post_data.embed.color, RED,);
@@ -225,6 +230,7 @@ mod tests {
                 "Records": [{
                     "Sns": {
                         "Message": json!({
+                            "AlarmName":"Test",
                             "NewStateValue":"OK",
                         }).to_string()
                     }
@@ -234,7 +240,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             post_data.content,
-            "(메시지에 NewStateReason이 없습니다)".to_string(),
+            "[Test] (메시지에 NewStateReason이 없습니다)".to_string(),
             "An OK should be parsed as an OK."
         );
         assert_eq!(post_data.embed.color, GREEN,);
@@ -287,7 +293,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             post_data.content,
-            "<@&678974055365476392> Threshold Crossed: 1 out of the last 1 datapoints [71.58514626666667 (09/04/22 21:01:00)] was less than the threshold (72.0) (minimum 1 datapoint for OK -> ALARM transition).".to_string(),
+            "<@&678974055365476392> [Femiwiki CPU credit balance] Threshold Crossed: 1 out of the last 1 datapoints [71.58514626666667 (09/04/22 21:01:00)] was less than the threshold (72.0) (minimum 1 datapoint for OK -> ALARM transition).".to_string(),
             "A test alarm should be parsed as a test alarm."
         );
         assert_eq!(post_data.embed.color, RED,);
@@ -308,7 +314,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             post_data.content,
-            "테스트".to_string(),
+            "[_Test] 테스트".to_string(),
             "A test alarm should be parsed as a test alarm."
         );
         assert_eq!(post_data.embed.color, GRAY,);
