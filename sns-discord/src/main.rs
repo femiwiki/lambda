@@ -181,7 +181,7 @@ fn message_to_fields(message: &Value) -> Vec<Field> {
                         }
                     )
                 },
-                inline: true,
+                inline: value.is_string(),
             });
         }
     }
