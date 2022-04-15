@@ -67,7 +67,10 @@ async fn func(event: Value, _context: Context) -> Result<Value, Error> {
         "embeds": [{
             "color": post_data.embed.color,
             "description": post_data.embed.description,
-            "fields": post_data.embed.fields,
+            "fields": match serde_json::to_value(&post_data.embed.fields) {
+                Ok(v) => v,
+                Err(_) => Value::Null,
+            },
         }],
         "allowed_mentions": {
             "roles": ["678974055365476392"]
@@ -110,22 +113,23 @@ fn parse_message(event: &Value) -> Result<PostData, Error> {
                 let notify = state != "OK" && !test;
                 let color = if test {
                     GRAY
+                } else if notify {
+                    RED
                 } else {
-                    if notify {
-                        RED
-                    } else {
-                        GREEN
-                    }
+                    GREEN
                 };
-                let reason = String::from(
+                let summary = format!(
+                    "[{}] {}",
+                    json["AlarmName"]
+                        .as_str()
+                        .unwrap_or("(메시지에 AlarmName이 없습니다)"),
                     json["NewStateReason"]
                         .as_str()
                         .unwrap_or("(메시지에 NewStateReason이 없습니다)"),
                 );
                 let fields = message_to_fields(&json);
-                let dump = serde_json::to_string_pretty(&json)?;
 
-                (notify, color, reason, fields, dump)
+                (notify, color, summary, fields, String::new())
             }
             Err(_) => (true, RED, String::new(), Vec::new(), message.to_string()),
         }
@@ -145,7 +149,7 @@ fn parse_message(event: &Value) -> Result<PostData, Error> {
         if notify {
             "<@&678974055365476392> "
         } else {
-            ""
+            "🟢 "
         },
         summary
     );
@@ -154,7 +158,11 @@ fn parse_message(event: &Value) -> Result<PostData, Error> {
         content,
         embed: Embed {
             color,
-            description: format!("```json\n{}\n```", dump),
+            description: if !dump.is_empty() {
+                format!("```json\n{}\n```", dump)
+            } else {
+                String::new()
+            },
             fields,
         },
     })
@@ -164,21 +172,37 @@ fn message_to_fields(message: &Value) -> Vec<Field> {
     let mut fields: Vec<Field> = Vec::new();
     if let Some(obj) = message.as_object() {
         for (key, value) in obj.iter() {
-            if key == "NewStateReason" {
+            if key == "NewStateReason" || key == "AlarmName" {
                 continue;
             }
+            let (value, inline) = value_to_string(value);
             fields.push(Field {
                 name: key.to_string(),
-                value: if value.is_string() {
-                    String::from(value.as_str().unwrap_or(""))
-                } else {
-                    format!("```json\n{}\n```", value.to_string())
-                },
-                inline: true,
+                value,
+                inline,
             });
         }
     }
     fields
+}
+
+fn value_to_string(value: &Value) -> (String, bool) {
+    let str = match value {
+        Value::String(s) => s.to_string(),
+        _ => {
+            let stringified = match serde_json::to_string_pretty(&value) {
+                Ok(v) => v,
+                Err(_) => value.to_string(),
+            };
+            if stringified.contains('\n') {
+                format!("```json\n{}\n```", stringified)
+            } else {
+                format!("`{}`", stringified)
+            }
+        }
+    };
+    let inline = !str.contains('\n');
+    (str, inline)
 }
 
 #[cfg(test)]
@@ -203,6 +227,7 @@ mod tests {
                     "Sns": {
                         "Message": json!({
                             "NewStateValue":"ALARM",
+                            "AlarmName": "Femiwiki CPU credit balance",
                             "NewStateReason": "Threshold Crossed: 1 out of the last 1 datapoints was less than the threshold.",
                         }).to_string()
                     }
@@ -212,7 +237,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             post_data.content,
-            "<@&678974055365476392> Threshold Crossed: 1 out of the last 1 datapoints was less than the threshold.".to_string(),
+            "<@&678974055365476392> [Femiwiki CPU credit balance] Threshold Crossed: 1 out of the last 1 datapoints was less than the threshold.".to_string(),
             "An alarm should be parsed as an alarm."
         );
         assert_eq!(post_data.embed.color, RED,);
@@ -222,6 +247,7 @@ mod tests {
                 "Records": [{
                     "Sns": {
                         "Message": json!({
+                            "AlarmName":"Test",
                             "NewStateValue":"OK",
                         }).to_string()
                     }
@@ -231,7 +257,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             post_data.content,
-            "(메시지에 NewStateReason이 없습니다)".to_string(),
+            "🟢 [Test] (메시지에 NewStateReason이 없습니다)".to_string(),
             "An OK should be parsed as an OK."
         );
         assert_eq!(post_data.embed.color, GREEN,);
@@ -284,7 +310,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             post_data.content,
-            "<@&678974055365476392> Threshold Crossed: 1 out of the last 1 datapoints [71.58514626666667 (09/04/22 21:01:00)] was less than the threshold (72.0) (minimum 1 datapoint for OK -> ALARM transition).".to_string(),
+            "<@&678974055365476392> [Femiwiki CPU credit balance] Threshold Crossed: 1 out of the last 1 datapoints [71.58514626666667 (09/04/22 21:01:00)] was less than the threshold (72.0) (minimum 1 datapoint for OK -> ALARM transition).".to_string(),
             "A test alarm should be parsed as a test alarm."
         );
         assert_eq!(post_data.embed.color, RED,);
@@ -305,7 +331,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             post_data.content,
-            "테스트".to_string(),
+            "🟢 [_Test] 테스트".to_string(),
             "A test alarm should be parsed as a test alarm."
         );
         assert_eq!(post_data.embed.color, GRAY,);
@@ -328,6 +354,31 @@ mod tests {
             "OKActions": [],
         }));
         assert_eq!(fields.len(), 2,);
-        assert_eq!(fields[1].value, "```json\n[]\n```",);
+        assert_eq!(fields[1].value, "`[]`",);
+    }
+
+    #[test]
+    fn value_to_string_test() {
+        assert_eq!(
+            value_to_string(&Value::Null),
+            (String::from("`null`"), true),
+        );
+        assert_eq!(value_to_string(&json!("Foo")), (String::from("Foo"), true),);
+        assert_eq!(
+            value_to_string(&json!(["Foo", "Bar"])),
+            (
+                String::from("```json\n[\n  \"Foo\",\n  \"Bar\"\n]\n```"),
+                false
+            ),
+        );
+        assert_eq!(
+            value_to_string(&json!(
+                { "Foo": "bar" }
+            )),
+            (
+                String::from("```json\n{\n  \"Foo\": \"bar\"\n}\n```"),
+                false
+            ),
+        );
     }
 }
