@@ -182,7 +182,7 @@ fn message_to_fields(message: &Value) -> Vec<Field> {
             fields.push(Field {
                 name: key.to_string(),
                 value: String::from(&stringified),
-                inline: value.is_string() || !stringified.contains("\n"),
+                inline: value.is_string() || !stringified.contains('\n'),
             });
         }
     }
