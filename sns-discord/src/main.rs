@@ -168,25 +168,34 @@ fn message_to_fields(message: &Value) -> Vec<Field> {
             if key == "NewStateReason" || key == "AlarmName" {
                 continue;
             }
-            let stringified = if value.is_string() {
-                String::from(value.as_str().unwrap_or(""))
-            } else {
-                format!(
-                    "```json\n{}\n```",
-                    match serde_json::to_string_pretty(&value) {
-                        Ok(v) => v,
-                        Err(_) => value.to_string(),
-                    }
-                )
-            };
+            let (value, inline) = value_to_string(value);
             fields.push(Field {
                 name: key.to_string(),
-                value: String::from(&stringified),
-                inline: value.is_string() || !stringified.contains('\n'),
+                value,
+                inline,
             });
         }
     }
     fields
+}
+
+fn value_to_string(value: &Value) -> (String, bool) {
+    let str = match value {
+        Value::String(s) => s.to_string(),
+        _ => {
+            let stringified = match serde_json::to_string_pretty(&value) {
+                Ok(v) => v,
+                Err(_) => value.to_string(),
+            };
+            if stringified.contains('\n') {
+                format!("```json\n{}\n```", stringified)
+            } else {
+                format!("`{}`", stringified)
+            }
+        }
+    };
+    let inline = !str.contains('\n');
+    (str, inline)
 }
 
 #[cfg(test)]
@@ -338,6 +347,31 @@ mod tests {
             "OKActions": [],
         }));
         assert_eq!(fields.len(), 2,);
-        assert_eq!(fields[1].value, "```json\n[]\n```",);
+        assert_eq!(fields[1].value, "`[]`",);
+    }
+
+    #[test]
+    fn value_to_string_test() {
+        assert_eq!(
+            value_to_string(&Value::Null),
+            (String::from("`null`"), true),
+        );
+        assert_eq!(value_to_string(&json!("Foo")), (String::from("Foo"), true),);
+        assert_eq!(
+            value_to_string(&json!(["Foo", "Bar"])),
+            (
+                String::from("```json\n[\n  \"Foo\",\n  \"Bar\"\n]\n```"),
+                false
+            ),
+        );
+        assert_eq!(
+            value_to_string(&json!(
+                { "Foo": "bar" }
+            )),
+            (
+                String::from("```json\n{\n  \"Foo\": \"bar\"\n}\n```"),
+                false
+            ),
+        );
     }
 }
