@@ -168,20 +168,21 @@ fn message_to_fields(message: &Value) -> Vec<Field> {
             if key == "NewStateReason" || key == "AlarmName" {
                 continue;
             }
+            let stringified = if value.is_string() {
+                String::from(value.as_str().unwrap_or(""))
+            } else {
+                format!(
+                    "```json\n{}\n```",
+                    match serde_json::to_string_pretty(&value) {
+                        Ok(v) => v,
+                        Err(_) => value.to_string(),
+                    }
+                )
+            };
             fields.push(Field {
                 name: key.to_string(),
-                value: if value.is_string() {
-                    String::from(value.as_str().unwrap_or(""))
-                } else {
-                    format!(
-                        "```json\n{}\n```",
-                        match serde_json::to_string_pretty(&value) {
-                            Ok(v) => v,
-                            Err(_) => value.to_string(),
-                        }
-                    )
-                },
-                inline: value.is_string(),
+                value: String::from(&stringified),
+                inline: value.is_string() || !stringified.contains("\n"),
             });
         }
     }
