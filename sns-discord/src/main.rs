@@ -142,7 +142,7 @@ fn parse_message(event: &Value) -> Result<PostData, Error> {
         if notify {
             "<@&678974055365476392> "
         } else {
-            ""
+            "🟢 "
         },
         summary
     );
@@ -240,7 +240,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             post_data.content,
-            "[Test] (메시지에 NewStateReason이 없습니다)".to_string(),
+            "🟢 [Test] (메시지에 NewStateReason이 없습니다)".to_string(),
             "An OK should be parsed as an OK."
         );
         assert_eq!(post_data.embed.color, GREEN,);
@@ -314,7 +314,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             post_data.content,
-            "[_Test] 테스트".to_string(),
+            "🟢 [_Test] 테스트".to_string(),
             "A test alarm should be parsed as a test alarm."
         );
         assert_eq!(post_data.embed.color, GRAY,);
