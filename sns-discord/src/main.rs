@@ -44,8 +44,15 @@ async fn func(event: Value, _context: Context) -> Result<Value, Error> {
     // Initialize global variable
     //
     let webhook_token = WEBHOOK_TOKEN.get_or_try_init(|| env::var("WEBHOOK_TOKEN"))?;
-    let client =
-        CLIENT.get_or_init(|| Client::builder().build(HttpsConnector::with_native_roots()));
+    let client = CLIENT.get_or_init(|| {
+        Client::builder().build(
+            hyper_rustls::HttpsConnectorBuilder::new()
+                .with_native_roots()
+                .https_only()
+                .enable_http1()
+                .build(),
+        )
+    });
 
     let post_data = match parse_message(&event) {
         Ok(post_data) => post_data,
