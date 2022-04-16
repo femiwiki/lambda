@@ -1,6 +1,6 @@
 use hyper::{body::to_bytes, client::HttpConnector, Body, Client, Request};
 use hyper_rustls::HttpsConnector;
-use lambda_runtime::{handler_fn, Context, Error};
+use lambda_runtime::{service_fn, Error, LambdaEvent};
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -34,12 +34,13 @@ struct PostData {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let func = handler_fn(func);
+    let func = service_fn(func);
     lambda_runtime::run(func).await?;
     Ok(())
 }
 
-async fn func(event: Value, _context: Context) -> Result<Value, Error> {
+async fn func(event: LambdaEvent<Value>) -> Result<Value, Error> {
+    let (event, _context) = event.into_parts();
     //
     // Initialize global variable
     //
