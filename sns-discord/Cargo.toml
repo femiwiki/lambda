@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 lambda_runtime = "0.5.1"
 tokio = "1.16.1"
-hyper = { version = "0.14.20", features = ["client", "http2", "http1"] }
+hyper = { version = "0.14.23", features = ["client", "http2", "http1"] }
 hyper-rustls = "0.23.0"
 serde = "1.0.137"
 serde_json = "1.0.83"
