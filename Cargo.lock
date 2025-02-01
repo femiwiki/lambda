@@ -195,16 +195,16 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.3.26"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81fe527a889e1532da5c525686d96d4c2e74cdd345badf8dfef9f6b39dd5f5e8"
+checksum = "816ec7294445779408f36fe57bc5b7fc1cf59664059096c65f905c1c61f58069"
 dependencies = [
  "bytes",
  "fnv",
  "futures-core",
  "futures-sink",
  "futures-util",
- "http 0.2.4",
+ "http 1.0.0",
  "indexmap",
  "slab",
  "tokio",
@@ -307,22 +307,21 @@ checksum = "6456b8a6c8f33fee7d958fcd1b60d55b11940a79e63ae87013e6d22e26034440"
 
 [[package]]
 name = "hyper"
-version = "0.14.23"
+version = "0.14.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "034711faac9d2166cb1baf1a2fb0b60b1f277f8492fd72176c17f3515e1abd3c"
+checksum = "bf96e135eb83a2a8ddf766e426a841d8ddd7449d5f00d34ea02b41d2f19eef80"
 dependencies = [
  "bytes",
  "futures-channel",
  "futures-core",
  "futures-util",
- "h2",
  "http 0.2.4",
  "http-body 0.4.3",
  "httparse",
  "httpdate",
  "itoa 1.0.1",
  "pin-project-lite",
- "socket2 0.4.7",
+ "socket2 0.5.6",
  "tokio",
  "tower-service",
  "tracing",
@@ -338,6 +337,7 @@ dependencies = [
  "bytes",
  "futures-channel",
  "futures-util",
+ "h2",
  "http 1.0.0",
  "http-body 1.0.0",
  "httparse",
@@ -355,7 +355,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1788965e61b367cd03a62950836d5cd41560c3577d90e40e0819373194d1661c"
 dependencies = [
  "http 0.2.4",
- "hyper 0.14.23",
+ "hyper 0.14.28",
  "log",
  "rustls",
  "rustls-native-certs",
@@ -798,7 +798,7 @@ checksum = "e6ecd384b10a64542d77071bd64bd7b231f4ed5940fba55e98c3de13824cf3d7"
 name = "sns-discord"
 version = "0.1.0"
 dependencies = [
- "hyper 0.14.23",
+ "hyper 1.2.0",
  "hyper-rustls",
  "lambda_runtime",
  "once_cell",
