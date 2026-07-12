@@ -6,7 +6,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.3.2
 
       - run: uvx ruff format --check .
       - run: uvx ruff check .
