@@ -4,10 +4,11 @@ A monorepo of Femiwiki's AWS Lambda functions.
 
 ```bash
 # Lint, type-check and test
+uv sync
 uvx ruff format --check .
 uvx ruff check .
 uvx ty check .
-uv run --python 3.13 python -m unittest discover -s sns-discord
+uv run python -m unittest discover -s sns-discord
 
 # Make into zip file
 zip -j lambda.zip sns-discord/lambda_function.py
