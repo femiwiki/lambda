@@ -26,7 +26,10 @@ def lambda_handler(event: Any, context: Any) -> None:
     request = urllib.request.Request(
         WEBHOOK_URL.format(webhook_token),
         data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "femiwiki-lambda-sns-discord (+https://github.com/femiwiki/lambda)",
+        },
         method="POST",
     )
     try:
