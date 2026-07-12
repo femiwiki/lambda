@@ -53,7 +53,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ matrix.region }}
 
-      - name: Switch runtime to Python
+      - name: Ensure runtime and handler
         run: |
           aws lambda update-function-configuration \
             --function-name DiscordNoti \
