@@ -1,42 +1,20 @@
 on: [push, pull_request]
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Cache toolchains and crates
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.rustup/settings.toml
-            ~/.rustup/toolchains
-            ~/.rustup/update-hashes
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: toolchains-and-crates-${{ runner.os }}
+      - uses: actions/checkout@v6
 
-      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v8.3.2
 
-      - name: Cache build results
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: build-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+      - run: uvx ruff format --check .
+      - run: uvx ruff check .
+      - run: uvx ty check .
+      - run: uv run --python 3.13 python -m unittest discover -s sns-discord -v
 
-      - run: rustup target add x86_64-unknown-linux-musl
-      - run: sudo apt-get install musl-tools
-      - run: cargo fmt --all -- --check
-        continue-on-error: true
-      - run: cargo build --release
-      - run: |
-          cp target/x86_64-unknown-linux-musl/release/sns-discord bootstrap
-          zip -j lambda.zip bootstrap && rm bootstrap
-      - run: cargo test
-      - run: cargo clippy -- -D warnings
-      - uses: actions/upload-artifact@v4
+      - run: zip -j lambda.zip sns-discord/lambda_function.py
+      - uses: actions/upload-artifact@v6
         with:
           name: build
           path: lambda.zip
@@ -44,7 +22,7 @@ jobs:
   fmt-prettier:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: creyD/prettier_action@v4.3
         with:
           dry: true
@@ -58,22 +36,37 @@ jobs:
     needs:
       - test
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
     strategy:
       matrix:
         region:
           - us-east-1
           - ap-northeast-1
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: build
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::302617221463:role/github-lambda
           aws-region: ${{ matrix.region }}
+
+      - name: Ensure runtime and handler
+        run: |
+          aws lambda wait function-updated \
+            --function-name DiscordNoti \
+            --region "${{ matrix.region }}"
+          aws lambda update-function-configuration \
+            --function-name DiscordNoti \
+            --runtime python3.13 \
+            --handler lambda_function.lambda_handler \
+            --region "${{ matrix.region }}"
+          aws lambda wait function-updated \
+            --function-name DiscordNoti \
+            --region "${{ matrix.region }}"
 
       - run: |
           aws lambda update-function-code \
