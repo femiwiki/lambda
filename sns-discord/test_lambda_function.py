@@ -1,6 +1,5 @@
 import json
 import unittest
-from io import BytesIO
 from unittest.mock import patch
 
 from lambda_function import (
@@ -8,6 +7,7 @@ from lambda_function import (
     GREEN,
     RED,
     build_chart_widget,
+    build_payload,
     encode_multipart,
     fetch_chart_image,
     message_to_fields,
@@ -281,10 +281,43 @@ class FetchChartImageTest(unittest.TestCase):
     def test_success_returns_image_bytes(self):
         with patch("lambda_function.cloudwatch") as mock_cloudwatch:
             mock_cloudwatch.get_metric_widget_image.return_value = {
-                "MetricWidgetImage": BytesIO(b"\x89PNG...")
+                "MetricWidgetImage": b"\x89PNG..."
             }
             result = fetch_chart_image(FULL_TRIGGER)
         self.assertEqual(result, b"\x89PNG...")
+
+
+class BuildPayloadTest(unittest.TestCase):
+    def test_no_chart_keeps_fields_and_description(self):
+        post_data = {
+            "content": "hi",
+            "embed": {
+                "color": RED,
+                "description": "```json\n{}\n```",
+                "fields": [{"name": "a", "value": "b", "inline": True}],
+            },
+        }
+        payload = build_payload(post_data, None)
+        embed = payload["embeds"][0]
+        self.assertEqual(embed["description"], "```json\n{}\n```")
+        self.assertEqual(embed["fields"], [{"name": "a", "value": "b", "inline": True}])
+        self.assertNotIn("image", embed)
+
+    def test_chart_strips_fields_and_description(self):
+        post_data = {
+            "content": "hi",
+            "embed": {
+                "color": RED,
+                "description": "```json\n{}\n```",
+                "fields": [{"name": "a", "value": "b", "inline": True}],
+            },
+        }
+        payload = build_payload(post_data, b"\x89PNG...")
+        embed = payload["embeds"][0]
+        self.assertEqual(embed["description"], "")
+        self.assertEqual(embed["fields"], [])
+        self.assertEqual(embed["image"], {"url": "attachment://chart.png"})
+        self.assertEqual(embed["color"], RED)
 
 
 if __name__ == "__main__":

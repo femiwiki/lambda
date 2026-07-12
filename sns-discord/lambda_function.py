@@ -34,19 +34,14 @@ def lambda_handler(event: Any, context: Any) -> None:
     webhook_token = os.environ["WEBHOOK_TOKEN"]
     post_data = parse_message(event)
 
-    payload = {
-        "content": post_data["content"],
-        "embeds": [post_data["embed"]],
-        "allowed_mentions": {"roles": [MENTION_ROLE]},
-    }
-
     trigger = post_data["trigger"]
     chart = fetch_chart_image(trigger) if trigger else None
+    payload = build_payload(post_data, chart)
+
     if chart is None:
         body = json.dumps(payload).encode()
         content_type = "application/json"
     else:
-        payload["embeds"][0]["image"] = {"url": "attachment://chart.png"}
         body = encode_multipart(payload, chart)
         content_type = f"multipart/form-data; boundary={MULTIPART_BOUNDARY}"
 
@@ -77,6 +72,22 @@ def lambda_handler(event: Any, context: Any) -> None:
             ensure_ascii=False,
         )
     )
+
+
+def build_payload(post_data: dict[str, Any], chart: bytes | None) -> dict[str, Any]:
+    embed = post_data["embed"]
+    if chart is not None:
+        embed = {
+            **embed,
+            "description": "",
+            "fields": [],
+            "image": {"url": "attachment://chart.png"},
+        }
+    return {
+        "content": post_data["content"],
+        "embeds": [embed],
+        "allowed_mentions": {"roles": [MENTION_ROLE]},
+    }
 
 
 def parse_message(event: Any) -> dict[str, Any]:
@@ -220,7 +231,7 @@ def fetch_chart_image(trigger: dict[str, Any]) -> bytes | None:
         response = cloudwatch.get_metric_widget_image(
             MetricWidget=json.dumps(widget), OutputFormat="png"
         )
-        return response["MetricWidgetImage"].read()
+        return response["MetricWidgetImage"]
     except Exception:
         # A chart is a nice-to-have; never let it block the alarm itself.
         return None
