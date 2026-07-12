@@ -49,7 +49,7 @@ jobs:
           name: build
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::302617221463:role/github-lambda
           aws-region: ${{ matrix.region }}
