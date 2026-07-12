@@ -55,6 +55,9 @@ jobs:
 
       - name: Ensure runtime and handler
         run: |
+          aws lambda wait function-updated \
+            --function-name DiscordNoti \
+            --region "${{ matrix.region }}"
           aws lambda update-function-configuration \
             --function-name DiscordNoti \
             --runtime python3.13 \
