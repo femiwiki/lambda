@@ -1,6 +1,7 @@
-# Rust build results
-/target
+# Python
+__pycache__/
+.venv/
+/uv.lock
 
 # AWS Lambda ZIP file
-/bootstrap
 /lambda.zip

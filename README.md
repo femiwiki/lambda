@@ -3,19 +3,14 @@
 A monorepo of Femiwiki's AWS Lambda functions.
 
 ```bash
-# You need musl toolchain, in Ubuntu:
-sudo apt-get install musl-tools
-
-# Install musl target
-rustup target add x86_64-unknown-linux-musl
-
-# Build
-cargo build --release
+# Lint, type-check and test
+uvx ruff format --check .
+uvx ruff check .
+uvx ty check .
+uv run --python 3.13 python -m unittest discover -s sns-discord
 
 # Make into zip file
-cp target/x86_64-unknown-linux-musl/release/sns-discord bootstrap
-zip -j lambda.zip bootstrap
-rm bootstrap
+zip -j lambda.zip sns-discord/lambda_function.py
 
 # Publish
 aws lambda update-function-code --function-name DiscordNoti \
