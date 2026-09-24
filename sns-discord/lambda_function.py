@@ -232,7 +232,7 @@ def fetch_chart_image(trigger: dict[str, Any]) -> bytes | None:
             MetricWidget=json.dumps(widget), OutputFormat="png"
         )
         return response["MetricWidgetImage"]
-    except Exception:
+    except Exception:  # noqa: BLE001
         # A chart is a nice-to-have; never let it block the alarm itself.
         return None
 
