@@ -1,47 +1,44 @@
+---
+name: Deploy
 on:
   push:
     branches: [main]
-  pull_request:
-
+    paths:
+      - sns-discord/lambda_function.py
+      - .github/workflows/deploy.yml
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: deploy
 jobs:
-  test:
+  build:
+    if: github.repository_owner == 'femiwiki'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v8.3.2
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
 
       - run: uv sync
-      - run: uvx ruff format --check .
-      - run: uvx ruff check .
-      - run: uvx ty check .
-      - run: uv run python -m unittest discover -s sns-discord -v
-        env:
+      - env:
           AWS_DEFAULT_REGION: us-east-1
+        run: uv run python -m unittest discover -s sns-discord -v
 
       - run: zip -j lambda.zip sns-discord/lambda_function.py
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: build
           path: lambda.zip
 
-  fmt-prettier:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: creyD/prettier_action@v4.3
-        with:
-          dry: true
-          prettier_options: --check **/*.{md,yaml,yml}
-
   deploy:
-    if: |
-      github.repository_owner == 'femiwiki' &&
-      github.ref == 'refs/heads/main' &&
-      github.event_name == 'push'
-    needs:
-      - test
+    needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       id-token: write
     strategy:
@@ -50,33 +47,36 @@ jobs:
           - us-east-1
           - ap-northeast-1
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: build
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v5
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: arn:aws:iam::302617221463:role/github-lambda
           aws-region: ${{ matrix.region }}
 
       - name: Ensure runtime and handler
+        env:
+          REGION: ${{ matrix.region }}
         run: |
           aws lambda wait function-updated \
             --function-name DiscordNoti \
-            --region "${{ matrix.region }}"
+            --region "$REGION"
           aws lambda update-function-configuration \
             --function-name DiscordNoti \
             --runtime python3.13 \
             --handler lambda_function.lambda_handler \
-            --region "${{ matrix.region }}"
+            --region "$REGION"
           aws lambda wait function-updated \
             --function-name DiscordNoti \
-            --region "${{ matrix.region }}"
+            --region "$REGION"
 
-      - run: |
+      - env:
+          REGION: ${{ matrix.region }}
+        run: |
           aws lambda update-function-code \
             --function-name DiscordNoti \
             --zip-file fileb://lambda.zip \
-            --region "${{ matrix.region }}" \
+            --region "$REGION" \
             --publish
