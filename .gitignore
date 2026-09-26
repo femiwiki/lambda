@@ -1,7 +1,6 @@
 # Python
 __pycache__/
 .venv/
-/uv.lock
 
 # AWS Lambda ZIP file
 /lambda.zip
