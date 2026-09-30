@@ -9,3 +9,11 @@ lint = [
   "ruff==0.16.9",
   "ty==0.0.84",
 ]
+mastodon-discord = [
+  "html2text>=2025.4.15",
+  "mastodon-py>=2.2.2",
+  "requests>=2.34.2",
+]
+
+[tool.uv]
+default-groups = ["dev", "mastodon-discord"]

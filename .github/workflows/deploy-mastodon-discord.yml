@@ -1,0 +1,71 @@
+---
+name: Deploy mastodon-discord
+on:
+  push:
+    branches: [main]
+    paths:
+      - mastodon-discord/lambda_function.py
+      - uv.lock
+      - .github/workflows/deploy-mastodon-discord.yml
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: deploy-mastodon-discord
+jobs:
+  deploy:
+    if: github.repository_owner == 'femiwiki'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+
+      - run: uv sync --locked
+      - env:
+          AWS_DEFAULT_REGION: ap-northeast-2
+        run: uv run python -m unittest discover -s mastodon-discord -v
+
+      - name: Build
+        run: |
+          uv export --frozen --only-group mastodon-discord --no-emit-project -o requirements.txt
+          uv pip install --target build --python-platform aarch64-manylinux2014 \
+            --python-version 3.13 --only-binary :all: -r requirements.txt
+          cp mastodon-discord/lambda_function.py build/
+          cd build && zip -qr ../lambda.zip .
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::302617221463:role/github-lambda
+          aws-region: ap-northeast-2
+
+      - name: Set the environment
+        env:
+          MASTODON_TOKEN: ${{ secrets.MASTODON_TOKEN }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+        run: |
+          test -n "$MASTODON_TOKEN" && test -n "$DISCORD_BOT_TOKEN"
+          jq -n '{Variables: {
+            MASTODON_INSTANCE: "https://mastodon.social",
+            MASTODON_TOKEN: env.MASTODON_TOKEN,
+            ALLOWED_ACCTS: "lens0021@floss.social",
+            CURSOR_PARAMETER: "/mastodon-discord/cursor",
+            DISCORD_BOT_TOKEN: env.DISCORD_BOT_TOKEN,
+            DISCORD_CHANNEL_ID: "1331968549937479710"
+          }}' > environment.json
+          aws lambda update-function-configuration \
+            --function-name mastodon-discord \
+            --environment file://environment.json
+          rm environment.json
+          aws lambda wait function-updated --function-name mastodon-discord
+
+      - run: |
+          aws lambda update-function-code \
+            --function-name mastodon-discord \
+            --zip-file fileb://lambda.zip \
+            --publish
