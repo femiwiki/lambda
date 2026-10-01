@@ -10,6 +10,7 @@ uvx ruff check .
 uvx ty check .
 uv run python -m unittest discover -s sns-discord
 uv run python -m unittest discover -s mastodon-discord
+uv run python -m unittest discover -s grafana-github
 
 # Make into zip file
 zip -j lambda.zip sns-discord/lambda_function.py
@@ -26,7 +27,7 @@ aws lambda update-function-code --function-name DiscordNoti \
 Relays mentions of the wiki's Mastodon status account from the accounts in
 `ALLOWED_ACCTS` to a Discord channel, as a reply to the alert message a
 Mastodon reply answers. It runs every minute from an EventBridge rule in femiwiki/infra `aws/lambda.tf`.
-`deploy-mastodon-discord.yml` sets these variables, the two tokens from this
+`deploy.yml` sets these variables, the two tokens from this
 repository's secrets:
 
 - `MASTODON_INSTANCE`: e.g. `https://mastodon.social`
@@ -36,6 +37,19 @@ repository's secrets:
 - `DISCORD_BOT_TOKEN`: a bot that can view, read history in, and send to the
   channel, with the Message Content intent
 - `DISCORD_CHANNEL_ID`: the channel Grafana posts alerts to
+
+## grafana-github
+
+Keeps one issue in femiwiki/infra per Grafana alert rule labelled
+`impact=operators`. Grafana's webhook contact point calls the function URL from
+femiwiki/infra `aws/lambda.tf`; the first firing opens an issue named after the
+rule, and later notifications become comments. `deploy.yml` sets:
+
+- `GITHUB_APP_CLIENT_ID`: the alerts GitHub App, installed on femiwiki/infra
+  with Issues read and write
+- `GITHUB_APP_PRIVATE_KEY`: that App's private key
+- `GITHUB_REPOSITORY`: `femiwiki/infra`
+- `WEBHOOK_TOKEN`: the bearer token Grafana sends
 
 &nbsp;
 

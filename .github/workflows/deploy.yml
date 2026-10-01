@@ -4,19 +4,67 @@ on:
   push:
     branches: [main]
     paths:
-      - sns-discord/lambda_function.py
+      - '*/lambda_function.py'
+      - uv.lock
       - .github/workflows/deploy.yml
   workflow_dispatch:
 permissions: {}
 concurrency:
   group: deploy
 jobs:
-  build:
+  plan:
     if: github.repository_owner == 'femiwiki'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - id: targets
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          # One entry per deployed copy; a function in two regions is listed twice.
+          all='[
+            {"dir": "sns-discord", "function": "DiscordNoti", "region": "us-east-1"},
+            {"dir": "sns-discord", "function": "DiscordNoti", "region": "ap-northeast-1"},
+            {"dir": "mastodon-discord", "function": "mastodon-discord", "region": "ap-northeast-2"},
+            {"dir": "grafana-github", "function": "grafana-github", "region": "ap-northeast-2"}
+          ]'
+          changed=$(git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null || echo .github/workflows/deploy.yml)
+          if [ "$EVENT" = workflow_dispatch ] || grep -qxE 'uv.lock|.github/workflows/deploy.yml' <<< "$changed"; then
+            targets=$(jq -c . <<< "$all")
+          else
+            dirs=$(cut -d/ -f1 <<< "$changed" | jq -R . | jq -sc .)
+            targets=$(jq -c --argjson dirs "$dirs" '[.[] | select(.dir as $d | $dirs | index($d))]' <<< "$all")
+          fi
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: plan
+    if: needs.plan.outputs.targets != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.plan.outputs.targets) }}
+    env:
+      DIR: ${{ matrix.target.dir }}
+      FUNCTION: ${{ matrix.target.function }}
+      AWS_REGION: ${{ matrix.target.region }}
+      AWS_DEFAULT_REGION: ${{ matrix.target.region }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -24,59 +72,68 @@ jobs:
 
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
 
-      - run: uv sync
-      - env:
-          AWS_DEFAULT_REGION: us-east-1
-        run: uv run python -m unittest discover -s sns-discord -v
+      - run: uv sync --locked
+      - run: uv run python -m unittest discover -s "$DIR" -v
 
-      - run: zip -j lambda.zip sns-discord/lambda_function.py
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: build
-          path: lambda.zip
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      id-token: write
-    strategy:
-      matrix:
-        region:
-          - us-east-1
-          - ap-northeast-1
-    steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: build
+      - name: Build
+        run: |
+          mkdir build
+          # A function with its own dependency group ships it; the rest use only the runtime's.
+          if uv export --frozen --only-group "$DIR" --no-emit-project -o requirements.txt 2>/dev/null; then
+            uv pip install --target build --python-platform aarch64-manylinux2014 \
+              --python-version 3.13 --only-binary :all: -r requirements.txt
+          fi
+          cp "$DIR/lambda_function.py" build/
+          cd build && zip -qr ../lambda.zip .
 
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: arn:aws:iam::302617221463:role/github-lambda
-          aws-region: ${{ matrix.region }}
+          aws-region: ${{ matrix.target.region }}
 
-      - name: Ensure runtime and handler
+      - name: Set the environment of mastodon-discord
+        if: matrix.target.dir == 'mastodon-discord'
         env:
-          REGION: ${{ matrix.region }}
+          MASTODON_TOKEN: ${{ secrets.MASTODON_TOKEN }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
         run: |
-          aws lambda wait function-updated \
-            --function-name DiscordNoti \
-            --region "$REGION"
-          aws lambda update-function-configuration \
-            --function-name DiscordNoti \
-            --runtime python3.13 \
-            --handler lambda_function.lambda_handler \
-            --region "$REGION"
-          aws lambda wait function-updated \
-            --function-name DiscordNoti \
-            --region "$REGION"
+          test -n "$MASTODON_TOKEN" && test -n "$DISCORD_BOT_TOKEN"
+          jq -n '{Variables: {
+            MASTODON_INSTANCE: "https://mastodon.social",
+            MASTODON_TOKEN: env.MASTODON_TOKEN,
+            ALLOWED_ACCTS: "lens0021@floss.social",
+            CURSOR_PARAMETER: "/mastodon-discord/cursor",
+            DISCORD_BOT_TOKEN: env.DISCORD_BOT_TOKEN,
+            DISCORD_CHANNEL_ID: "1331968549937479710"
+          }}' > environment.json
 
-      - env:
-          REGION: ${{ matrix.region }}
+      - name: Set the environment of grafana-github
+        if: matrix.target.dir == 'grafana-github'
+        env:
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.ALERTS_APP_PRIVATE_KEY }}
+          WEBHOOK_TOKEN: ${{ secrets.ALERTS_WEBHOOK_TOKEN }}
         run: |
+          test -n "$GITHUB_APP_PRIVATE_KEY" && test -n "$WEBHOOK_TOKEN"
+          jq -n '{Variables: {
+            GITHUB_APP_CLIENT_ID: "Iv23liaEFekWQaJiQIF6",
+            GITHUB_APP_PRIVATE_KEY: env.GITHUB_APP_PRIVATE_KEY,
+            GITHUB_REPOSITORY: "femiwiki/infra",
+            WEBHOOK_TOKEN: env.WEBHOOK_TOKEN
+          }}' > environment.json
+
+      - name: Update the configuration
+        run: |
+          aws lambda wait function-updated --function-name "$FUNCTION"
+          args=(--runtime python3.13 --handler lambda_function.lambda_handler)
+          if [ -f environment.json ]; then
+            args+=(--environment file://environment.json)
+          fi
+          aws lambda update-function-configuration --function-name "$FUNCTION" "${args[@]}" > /dev/null
+          rm -f environment.json
+          aws lambda wait function-updated --function-name "$FUNCTION"
+
+      - run: |
           aws lambda update-function-code \
-            --function-name DiscordNoti \
+            --function-name "$FUNCTION" \
             --zip-file fileb://lambda.zip \
-            --region "$REGION" \
-            --publish
+            --publish > /dev/null

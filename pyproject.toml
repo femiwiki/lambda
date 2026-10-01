@@ -5,6 +5,9 @@ requires-python = ">=3.13"
 
 [dependency-groups]
 dev = ["boto3"]
+grafana-github = [
+  "pygithub>=2.10.0",
+]
 lint = [
   "ruff==0.16.9",
   "ty==0.0.84",
@@ -16,4 +19,4 @@ mastodon-discord = [
 ]
 
 [tool.uv]
-default-groups = ["dev", "mastodon-discord"]
+default-groups = ["dev", "grafana-github", "mastodon-discord"]
