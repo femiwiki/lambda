@@ -20,3 +20,21 @@ mastodon-discord = [
 
 [tool.uv]
 default-groups = ["dev", "grafana-github", "mastodon-discord"]
+
+[tool.ruff.lint]
+extend-select = [
+  "B",
+  "BLE",
+  "C901",
+  "FURB",
+  "I",
+  "PERF",
+  "PIE",
+  "PLR0912",
+  "PLR0913",
+  "PLR0915",
+  "RET",
+  "SIM",
+  "TRY",
+  "UP",
+]
