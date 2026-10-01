@@ -13,7 +13,6 @@ GREEN = 0x2DAF32
 GRAY = 0xB3B4BC
 
 MENTION_ROLE = "678974055365476392"
-WEBHOOK_URL = "https://discord.com/api/webhooks/792425523639746611/{}"
 
 STAT_NAMES = {
     "SAMPLECOUNT": "SampleCount",
@@ -31,11 +30,11 @@ cloudwatch = boto3.client("cloudwatch")
 
 
 def lambda_handler(event: Any, context: Any) -> None:
-    webhook_token = os.environ["WEBHOOK_TOKEN"]
+    webhook_url = os.environ["WEBHOOK_URL"]
     post_data = parse_message(event)
 
     trigger = post_data["trigger"]
-    chart = fetch_chart_image(trigger) if trigger else None
+    chart = fetch_chart_image(trigger, post_data["region"]) if trigger else None
     payload = build_payload(post_data, chart)
 
     if chart is None:
@@ -46,7 +45,7 @@ def lambda_handler(event: Any, context: Any) -> None:
         content_type = f"multipart/form-data; boundary={MULTIPART_BOUNDARY}"
 
     request = urllib.request.Request(
-        WEBHOOK_URL.format(webhook_token),
+        webhook_url,
         data=body,
         headers={
             "Content-Type": content_type,
@@ -94,6 +93,7 @@ def parse_message(event: Any) -> dict[str, Any]:
     message = sns_message(event)
     fields: list[dict[str, Any]] = []
     trigger = None
+    region = None
     if message is None:
         notify = True
         color = RED
@@ -126,6 +126,7 @@ def parse_message(event: Any) -> dict[str, Any]:
             dump = ""
             if isinstance(alarm.get("Trigger"), dict):
                 trigger = alarm["Trigger"]
+            region = alarm_region(alarm)
 
     mention = f"<@&{MENTION_ROLE}> " if notify else "🟢 "
     return {
@@ -136,7 +137,15 @@ def parse_message(event: Any) -> dict[str, Any]:
             "fields": fields,
         },
         "trigger": trigger,
+        "region": region,
     }
+
+
+def alarm_region(alarm: dict[str, Any]) -> str | None:
+    # arn:aws:cloudwatch:<region>:<account>:alarm:<name>
+    arn = alarm.get("AlarmArn")
+    parts = arn.split(":") if isinstance(arn, str) else []
+    return parts[3] if len(parts) > 3 and parts[3] else None
 
 
 def sns_message(event: Any) -> str | None:
@@ -169,7 +178,9 @@ def value_to_string(value: Any) -> tuple[str, bool]:
     return text, "\n" not in text
 
 
-def build_chart_widget(trigger: dict[str, Any]) -> dict[str, Any] | None:
+def build_chart_widget(
+    trigger: dict[str, Any], region: str | None = None
+) -> dict[str, Any] | None:
     namespace = trigger.get("Namespace")
     metric_name = trigger.get("MetricName")
     period = trigger.get("Period")
@@ -215,6 +226,9 @@ def build_chart_widget(trigger: dict[str, Any]) -> dict[str, Any] | None:
         "start": f"-PT{window_minutes}M",
         "end": "PT0H",
     }
+    # The alarm's metrics may live in another region than this function.
+    if region:
+        widget["region"] = region
     threshold = trigger.get("Threshold")
     if isinstance(threshold, (int, float)):
         widget["annotations"] = {
@@ -223,8 +237,10 @@ def build_chart_widget(trigger: dict[str, Any]) -> dict[str, Any] | None:
     return widget
 
 
-def fetch_chart_image(trigger: dict[str, Any]) -> bytes | None:
-    widget = build_chart_widget(trigger)
+def fetch_chart_image(
+    trigger: dict[str, Any], region: str | None = None
+) -> bytes | None:
+    widget = build_chart_widget(trigger, region)
     if widget is None:
         return None
     try:

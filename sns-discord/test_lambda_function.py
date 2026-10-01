@@ -143,6 +143,7 @@ class ParseMessageTest(unittest.TestCase):
         )
         self.assertEqual(post_data["embed"]["color"], RED)
         self.assertEqual(post_data["trigger"]["MetricName"], "CPUCreditBalance")
+        self.assertEqual(post_data["region"], "ap-northeast-1")
 
     def test_test_alarm(self):
         post_data = parse_message(
@@ -228,6 +229,16 @@ class BuildChartWidgetTest(unittest.TestCase):
             widget["annotations"]["horizontal"], [{"value": 72.0, "label": "Threshold"}]
         )
         self.assertEqual(widget["end"], "PT0H")
+
+    def test_region(self):
+        widget = build_chart_widget(FULL_TRIGGER, "us-east-1")
+        assert widget is not None
+        self.assertEqual(widget["region"], "us-east-1")
+
+    def test_no_region(self):
+        widget = build_chart_widget(FULL_TRIGGER)
+        assert widget is not None
+        self.assertNotIn("region", widget)
 
     def test_extended_statistic(self):
         trigger = {**FULL_TRIGGER, "Statistic": None, "ExtendedStatistic": "p90"}
