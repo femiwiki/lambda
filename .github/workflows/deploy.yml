@@ -32,10 +32,8 @@ jobs:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
         run: |
-          # One entry per deployed copy; a function in two regions is listed twice.
           all='[
-            {"dir": "sns-discord", "function": "DiscordNoti", "region": "us-east-1"},
-            {"dir": "sns-discord", "function": "DiscordNoti", "region": "ap-northeast-1"},
+            {"dir": "sns-discord", "function": "sns-discord", "region": "ap-northeast-2"},
             {"dir": "mastodon-discord", "function": "mastodon-discord", "region": "ap-northeast-2"},
             {"dir": "grafana-github", "function": "grafana-github", "region": "ap-northeast-2"}
           ]'
@@ -106,6 +104,14 @@ jobs:
             DISCORD_BOT_TOKEN: env.DISCORD_BOT_TOKEN,
             DISCORD_CHANNEL_ID: "1331968549937479710"
           }}' > environment.json
+
+      - name: Set the environment of sns-discord
+        if: matrix.target.dir == 'sns-discord'
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          test -n "$WEBHOOK_URL"
+          jq -n '{Variables: {WEBHOOK_URL: env.WEBHOOK_URL}}' > environment.json
 
       - name: Set the environment of grafana-github
         if: matrix.target.dir == 'grafana-github'
