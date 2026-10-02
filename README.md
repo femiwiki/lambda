@@ -48,6 +48,7 @@ rule, and later notifications become comments. `deploy.yml` sets:
 - `GITHUB_APP_CLIENT_ID`: the alerts GitHub App, installed on femiwiki/infra
   with Issues read and write
 - `GITHUB_APP_PRIVATE_KEY`: that App's private key
+- `GITHUB_MENTION`: `@femiwiki/pager`, mentioned in each new issue
 - `GITHUB_REPOSITORY`: `femiwiki/infra`
 - `WEBHOOK_TOKEN`: the bearer token Grafana sends
 
