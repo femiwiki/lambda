@@ -62,6 +62,16 @@ class TestRecord(unittest.TestCase):
         self.assertEqual(kwargs["title"], "Disk almost full")
         self.assertIn("/ is 92% full", kwargs["body"])
 
+    def test_mentions_the_team_only_when_opening(self):
+        r = repo([])
+        record(r, BOT, payload(), "@femiwiki/pager")
+        self.assertTrue(
+            r.create_issue.call_args.kwargs["body"].endswith("\n\n@femiwiki/pager")
+        )
+        existing = issue("Disk almost full")
+        record(repo([existing]), BOT, payload(), "@femiwiki/pager")
+        self.assertNotIn("@femiwiki/pager", existing.create_comment.call_args.args[0])
+
     def test_comments_on_the_open_issue_for_the_same_rule(self):
         existing = issue("Disk almost full")
         r = repo([existing])
@@ -119,6 +129,7 @@ class TestHandler(unittest.TestCase):
             "GITHUB_REPOSITORY": "femiwiki/infra",
             "GITHUB_APP_CLIENT_ID": "Iv23abc",
             "GITHUB_APP_PRIVATE_KEY": "unused",
+            "GITHUB_MENTION": "@femiwiki/pager",
         },
     )
     def test_records_as_the_app_on_the_repository(self):
@@ -141,7 +152,9 @@ class TestHandler(unittest.TestCase):
         app.get_repo_installation.assert_called_once_with("femiwiki", "infra")
         app.get_github_for_installation.assert_called_once_with(42, {"issues": "write"})
         github.get_repo.assert_called_once_with("femiwiki/infra")
-        recorded.assert_called_once_with(github.get_repo.return_value, BOT, payload())
+        recorded.assert_called_once_with(
+            github.get_repo.return_value, BOT, payload(), "@femiwiki/pager"
+        )
 
 
 if __name__ == "__main__":

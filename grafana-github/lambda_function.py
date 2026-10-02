@@ -3,6 +3,7 @@
 Grafana's webhook contact point posts its default payload to this function's
 URL. The first firing opens an issue titled with the rule's name; later
 notifications for the same rule, repeats and resolves alike, become comments.
+A new issue mentions GITHUB_MENTION, a team, so its members get a push.
 The pull request that fixes the cause closes the issue.
 """
 
@@ -35,7 +36,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, int]:
     bot = f"{app.get_app().slug}[bot]"
     installation = app.get_repo_installation(owner, name)
     github = app.get_github_for_installation(installation.id, {"issues": "write"})
-    record(github.get_repo(f"{owner}/{name}"), bot, payload)
+    record(
+        github.get_repo(f"{owner}/{name}"),
+        bot,
+        payload,
+        os.environ.get("GITHUB_MENTION", ""),
+    )
     return {"statusCode": 204}
 
 
@@ -43,7 +49,9 @@ def authorized(header: str, token: str) -> bool:
     return hmac.compare_digest(header.encode(), f"Bearer {token}".encode())
 
 
-def record(repo: Repository, bot: str, payload: dict[str, Any]) -> None:
+def record(
+    repo: Repository, bot: str, payload: dict[str, Any], mention: str = ""
+) -> None:
     title = (
         payload.get("groupLabels", {}).get("alertname")
         or payload["commonLabels"]["alertname"]
@@ -54,7 +62,7 @@ def record(repo: Repository, bot: str, payload: dict[str, Any]) -> None:
             issue.create_comment(text)
             return
     if payload["status"] == "firing":
-        repo.create_issue(title=title, body=text)
+        repo.create_issue(title=title, body=f"{text}\n\n{mention}".strip())
 
 
 def render(payload: dict[str, Any]) -> str:

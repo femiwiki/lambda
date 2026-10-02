@@ -123,6 +123,7 @@ jobs:
           jq -n '{Variables: {
             GITHUB_APP_CLIENT_ID: "Iv23liaEFekWQaJiQIF6",
             GITHUB_APP_PRIVATE_KEY: env.GITHUB_APP_PRIVATE_KEY,
+            GITHUB_MENTION: "@femiwiki/pager",
             GITHUB_REPOSITORY: "femiwiki/infra",
             WEBHOOK_TOKEN: env.WEBHOOK_TOKEN
           }}' > environment.json
