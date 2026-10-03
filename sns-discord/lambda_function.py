@@ -1,4 +1,4 @@
-"""Forward SNS CloudWatch alarm notifications to a Discord webhook."""
+"""Post CloudWatch alarm and AWS Budgets notifications from SNS to Discord in Korean."""
 
 import json
 import os
@@ -118,8 +118,9 @@ def parse_message(event: Any) -> dict[str, Any]:
         except ValueError:
             notify = True
             color = RED
-            summary = ""
-            description = code_block(message)
+            budget = budget_summary(message)
+            summary = budget or ""
+            description = "" if budget else code_block(message)
         else:
             alarm = parsed if isinstance(parsed, dict) else {}
             test = alarm.get("AlarmName") == "_Test"
@@ -142,6 +143,27 @@ def parse_message(event: Any) -> dict[str, Any]:
         "trigger": trigger,
         "region": region,
     }
+
+
+def budget_summary(message: str) -> str | None:
+    # AWS Budgets sends plain text with lines such as "Budget Name: lambda"
+    lines = dict(line.split(": ", 1) for line in message.splitlines() if ": " in line)
+    name = lines.get("Budget Name")
+    kind = lines.get("Alert Type")
+    threshold = lines.get("Alert Threshold")
+    if name is None or kind is None or threshold is None:
+        return None
+    noun = {"ACTUAL": "실제", "FORECASTED": "예상"}.get(kind, kind)
+    summary = f"[예산 {name}] {noun} 비용이 알림 기준({threshold})을 넘었습니다."
+    figures = [
+        f"{label} {amount}"
+        for label, amount in (
+            (noun, lines.get(f"{kind} Amount")),
+            ("예산", lines.get("Budgeted Amount")),
+        )
+        if amount is not None
+    ]
+    return f"{summary} {', '.join(figures)}." if figures else summary
 
 
 def alarm_region(alarm: dict[str, Any]) -> str | None:

@@ -199,6 +199,44 @@ class ParseMessageTest(unittest.TestCase):
         post_data = parse_message({"Records": [{"Sns": {"Message": "hello"}}]})
         self.assertEqual(post_data["embed"]["description"], "```json\nhello\n```")
 
+    def test_budget(self):
+        message = (
+            "AWS Budget Notification October 03, 2026\n"
+            "AWS Account 302617221463\n\n"
+            "Dear AWS Customer,\n\n"
+            "You requested that we alert you when the ACTUAL Cost associated with"
+            " your lambda budget is greater than $0.01 for the current month."
+            " The ACTUAL Cost associated with this budget is $0.02.\n\n"
+            "Budget Name: lambda\n"
+            "Budget Type: Cost\n"
+            "Budgeted Amount: $1.00\n"
+            "Alert Type: ACTUAL\n"
+            "Alert Threshold: > $0.01\n"
+            "ACTUAL Amount: $0.02\n\n"
+            "[1] https://console.aws.amazon.com/billing/home#/budgets\n"
+        )
+        post_data = parse_message({"Records": [{"Sns": {"Message": message}}]})
+        self.assertEqual(
+            post_data["content"],
+            "<@&678974055365476392> [예산 lambda] 실제 비용이 알림 기준(> $0.01)을"
+            " 넘었습니다. 실제 $0.02, 예산 $1.00.",
+        )
+        self.assertEqual(post_data["embed"], {"color": RED, "description": ""})
+
+    def test_forecasted_budget(self):
+        message = (
+            "Budget Name: lambda\n"
+            "Alert Type: FORECASTED\n"
+            "Alert Threshold: > $0.01\n"
+            "FORECASTED Amount: $0.05\n"
+        )
+        post_data = parse_message({"Records": [{"Sns": {"Message": message}}]})
+        self.assertEqual(
+            post_data["content"],
+            "<@&678974055365476392> [예산 lambda] 예상 비용이 알림 기준(> $0.01)을"
+            " 넘었습니다. 예상 $0.05.",
+        )
+
 
 class AlarmSummaryTest(unittest.TestCase):
     def test_ok_after_insufficient_data(self):
