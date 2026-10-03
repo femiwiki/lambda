@@ -95,12 +95,7 @@ def lambda_handler(event: Any, context: Any) -> None:
 def build_payload(post_data: dict[str, Any], chart: bytes | None) -> dict[str, Any]:
     embed = post_data["embed"]
     if chart is not None:
-        embed = {
-            **embed,
-            "description": "",
-            "fields": [],
-            "image": {"url": "attachment://chart.png"},
-        }
+        embed = {**embed, "image": {"url": "attachment://chart.png"}}
     return {
         "content": post_data["content"],
         "embeds": [embed],
@@ -110,14 +105,13 @@ def build_payload(post_data: dict[str, Any], chart: bytes | None) -> dict[str, A
 
 def parse_message(event: Any) -> dict[str, Any]:
     message = sns_message(event)
-    fields: list[dict[str, Any]] = []
     trigger = None
     region = None
     if message is None:
         notify = True
         color = RED
         summary = "알지 못하는 유형의 이벤트가 발생했습니다."
-        dump = json.dumps(event, indent=2, ensure_ascii=False)
+        description = code_block(json.dumps(event, indent=2, ensure_ascii=False))
     else:
         try:
             parsed = json.loads(message)
@@ -125,15 +119,18 @@ def parse_message(event: Any) -> dict[str, Any]:
             notify = True
             color = RED
             summary = ""
-            dump = message
+            description = code_block(message)
         else:
             alarm = parsed if isinstance(parsed, dict) else {}
             test = alarm.get("AlarmName") == "_Test"
             notify = alarm.get("NewStateValue") != "OK" and not test
             color = GRAY if test else RED if notify else GREEN
             summary = alarm_summary(alarm)
-            fields = message_to_fields(alarm)
-            dump = ""
+            # Written by whoever made the alarm, so already in their words
+            alarm_description = alarm.get("AlarmDescription")
+            description = (
+                alarm_description if isinstance(alarm_description, str) else ""
+            )
             if isinstance(alarm.get("Trigger"), dict):
                 trigger = alarm["Trigger"]
             region = alarm_region(alarm)
@@ -141,11 +138,7 @@ def parse_message(event: Any) -> dict[str, Any]:
     mention = f"<@&{MENTION_ROLE}> " if notify else "🟢 "
     return {
         "content": mention + summary,
-        "embed": {
-            "color": color,
-            "description": f"```json\n{dump}\n```" if dump else "",
-            "fields": fields,
-        },
+        "embed": {"color": color, "description": description},
         "trigger": trigger,
         "region": region,
     }
@@ -265,26 +258,8 @@ def sns_message(event: Any) -> str | None:
     return message if isinstance(message, str) else None
 
 
-def message_to_fields(message: dict[str, Any]) -> list[dict[str, Any]]:
-    fields = []
-    for key, value in message.items():
-        if key in ("NewStateReason", "AlarmName"):
-            continue
-        text, inline = value_to_string(value)
-        fields.append({"name": key, "value": text, "inline": inline})
-    return fields
-
-
-def value_to_string(value: Any) -> tuple[str, bool]:
-    if isinstance(value, str):
-        text = value
-    else:
-        stringified = json.dumps(value, indent=2, ensure_ascii=False)
-        if "\n" in stringified:
-            text = f"```json\n{stringified}\n```"
-        else:
-            text = f"`{stringified}`"
-    return text, "\n" not in text
+def code_block(text: str) -> str:
+    return f"```json\n{text}\n```"
 
 
 def build_chart_widget(

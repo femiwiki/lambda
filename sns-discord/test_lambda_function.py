@@ -11,9 +11,7 @@ from lambda_function import (
     build_payload,
     encode_multipart,
     fetch_chart_image,
-    message_to_fields,
     parse_message,
-    value_to_string,
 )
 
 FULL_TRIGGER = {
@@ -173,6 +171,34 @@ class ParseMessageTest(unittest.TestCase):
         self.assertEqual(post_data["embed"]["color"], GRAY)
         self.assertIsNone(post_data["trigger"])
 
+    def test_description_is_the_alarm_description(self):
+        post_data = parse_message(
+            {
+                "Records": [
+                    {
+                        "Sns": {
+                            "Message": json.dumps(
+                                {
+                                    "AlarmName": "_Test",
+                                    "AlarmDescription": "시험입니다.",
+                                    "NewStateValue": "ALARM",
+                                    "AWSAccountId": "302617221463",
+                                },
+                                ensure_ascii=False,
+                            )
+                        }
+                    }
+                ]
+            }
+        )
+        self.assertEqual(
+            post_data["embed"], {"color": GRAY, "description": "시험입니다."}
+        )
+
+    def test_plain_text_is_dumped(self):
+        post_data = parse_message({"Records": [{"Sns": {"Message": "hello"}}]})
+        self.assertEqual(post_data["embed"]["description"], "```json\nhello\n```")
+
 
 class AlarmSummaryTest(unittest.TestCase):
     def test_ok_after_insufficient_data(self):
@@ -255,42 +281,6 @@ class AlarmSummaryTest(unittest.TestCase):
         self.assertEqual(
             alarm_summary({"NewStateValue": "OK"}),
             "[(메시지에 AlarmName이 없습니다)] 해제.",
-        )
-
-
-class MessageToFieldsTest(unittest.TestCase):
-    def test_message_to_fields(self):
-        fields = message_to_fields(
-            {
-                "NewStateValue": "ALARM",
-                "OldStateValue": "OK",
-                "NewStateReason": "Threshold Crossed: 1 out of the last 1 datapoints [71.58514626666667 (09/04/22 21:01:00)] was less than the threshold (72.0) (minimum 1 datapoint for OK -> ALARM transition).",
-            }
-        )
-        self.assertEqual(len(fields), 2, "NewStateReason should be removed")
-        self.assertEqual(fields[1]["value"], "OK")
-
-        fields = message_to_fields(
-            {
-                "InsufficientDataActions": [],
-                "OKActions": [],
-            }
-        )
-        self.assertEqual(len(fields), 2)
-        self.assertEqual(fields[1]["value"], "`[]`")
-
-
-class ValueToStringTest(unittest.TestCase):
-    def test_value_to_string(self):
-        self.assertEqual(value_to_string(None), ("`null`", True))
-        self.assertEqual(value_to_string("Foo"), ("Foo", True))
-        self.assertEqual(
-            value_to_string(["Foo", "Bar"]),
-            ('```json\n[\n  "Foo",\n  "Bar"\n]\n```', False),
-        )
-        self.assertEqual(
-            value_to_string({"Foo": "bar"}),
-            ('```json\n{\n  "Foo": "bar"\n}\n```', False),
         )
 
 
@@ -384,36 +374,24 @@ class FetchChartImageTest(unittest.TestCase):
 
 
 class BuildPayloadTest(unittest.TestCase):
-    def test_no_chart_keeps_fields_and_description(self):
-        post_data = {
-            "content": "hi",
-            "embed": {
-                "color": RED,
-                "description": "```json\n{}\n```",
-                "fields": [{"name": "a", "value": "b", "inline": True}],
-            },
-        }
+    def test_no_chart(self):
+        post_data = {"content": "hi", "embed": {"color": RED, "description": "설명"}}
         payload = build_payload(post_data, None)
-        embed = payload["embeds"][0]
-        self.assertEqual(embed["description"], "```json\n{}\n```")
-        self.assertEqual(embed["fields"], [{"name": "a", "value": "b", "inline": True}])
-        self.assertNotIn("image", embed)
+        self.assertEqual(payload["embeds"], [{"color": RED, "description": "설명"}])
 
-    def test_chart_strips_fields_and_description(self):
-        post_data = {
-            "content": "hi",
-            "embed": {
-                "color": RED,
-                "description": "```json\n{}\n```",
-                "fields": [{"name": "a", "value": "b", "inline": True}],
-            },
-        }
+    def test_chart_keeps_the_description(self):
+        post_data = {"content": "hi", "embed": {"color": RED, "description": "설명"}}
         payload = build_payload(post_data, b"\x89PNG...")
-        embed = payload["embeds"][0]
-        self.assertEqual(embed["description"], "")
-        self.assertEqual(embed["fields"], [])
-        self.assertEqual(embed["image"], {"url": "attachment://chart.png"})
-        self.assertEqual(embed["color"], RED)
+        self.assertEqual(
+            payload["embeds"],
+            [
+                {
+                    "color": RED,
+                    "description": "설명",
+                    "image": {"url": "attachment://chart.png"},
+                }
+            ],
+        )
 
 
 if __name__ == "__main__":
