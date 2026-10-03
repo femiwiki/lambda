@@ -2,8 +2,10 @@
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import boto3
@@ -21,6 +23,23 @@ STAT_NAMES = {
     "MINIMUM": "Minimum",
     "MAXIMUM": "Maximum",
 }
+# What each statistic is called, with the subject particle it takes
+STAT_KOREAN = {
+    "SAMPLECOUNT": "표본 수가",
+    "AVERAGE": "평균이",
+    "SUM": "합계가",
+    "MINIMUM": "최솟값이",
+    "MAXIMUM": "최댓값이",
+}
+COMPARISON_KOREAN = {
+    "GreaterThanThreshold": "초과",
+    "GreaterThanOrEqualToThreshold": "이상",
+    "LessThanThreshold": "미만",
+    "LessThanOrEqualToThreshold": "이하",
+}
+KST = timezone(timedelta(hours=9), "KST")
+# A datapoint in NewStateReason, e.g. 3184.0 (03/10/26 01:37:00), in UTC
+DATAPOINT = re.compile(r"(-?[\d.]+(?:E-?\d+)?) \((\d\d/\d\d/\d\d \d\d:\d\d:\d\d)\)")
 CHART_WINDOW_MULTIPLIER = 12
 CHART_MIN_MINUTES = 30
 CHART_MAX_MINUTES = 360
@@ -112,16 +131,7 @@ def parse_message(event: Any) -> dict[str, Any]:
             test = alarm.get("AlarmName") == "_Test"
             notify = alarm.get("NewStateValue") != "OK" and not test
             color = GRAY if test else RED if notify else GREEN
-            alarm_name = alarm.get("AlarmName")
-            reason = alarm.get("NewStateReason")
-            summary = "[{}] {}".format(
-                alarm_name
-                if isinstance(alarm_name, str)
-                else "(메시지에 AlarmName이 없습니다)",
-                reason
-                if isinstance(reason, str)
-                else "(메시지에 NewStateReason이 없습니다)",
-            )
+            summary = alarm_summary(alarm)
             fields = message_to_fields(alarm)
             dump = ""
             if isinstance(alarm.get("Trigger"), dict):
@@ -146,6 +156,105 @@ def alarm_region(alarm: dict[str, Any]) -> str | None:
     arn = alarm.get("AlarmArn")
     parts = arn.split(":") if isinstance(arn, str) else []
     return parts[3] if len(parts) > 3 and parts[3] else None
+
+
+def alarm_summary(alarm: dict[str, Any]) -> str:
+    name = alarm.get("AlarmName")
+    state = {"ALARM": "경보", "OK": "해제", "INSUFFICIENT_DATA": "데이터 부족"}.get(
+        alarm.get("NewStateValue"), "상태 알 수 없음"
+    )
+    when = parse_time(alarm.get("StateChangeTime"), "%Y-%m-%dT%H:%M:%S.%f%z")
+    head = "[{}] {}".format(
+        name if isinstance(name, str) else "(메시지에 AlarmName이 없습니다)",
+        state if when is None else f"{state}, {when:%-m월 %-d일 %H:%M} KST",
+    )
+    trigger = alarm.get("Trigger")
+    condition = (
+        alarm_condition(trigger, alarm.get("NewStateValue"))
+        if isinstance(trigger, dict)
+        else None
+    )
+    reason = alarm.get("NewStateReason")
+    datapoints = recent_datapoints(reason) if isinstance(reason, str) else None
+    return " ".join(
+        part
+        for part in (head + ".", condition, datapoints and f"최근 값 {datapoints}.")
+        if part
+    )
+
+
+def alarm_condition(trigger: dict[str, Any], state: Any) -> str | None:
+    period = trigger.get("Period")
+    threshold = trigger.get("Threshold")
+    comparison = COMPARISON_KOREAN.get(trigger.get("ComparisonOperator"))
+    raw_stat = trigger.get("ExtendedStatistic") or trigger.get("Statistic")
+    stat = (
+        STAT_KOREAN.get(raw_stat.upper(), f"{raw_stat} 값이")
+        if isinstance(raw_stat, str)
+        else None
+    )
+    if (
+        not isinstance(period, int)
+        or not isinstance(threshold, (int, float))
+        or comparison is None
+        or stat is None
+    ):
+        return None
+
+    rule = f"기준({format_number(threshold)} {comparison})"
+    subject = f"{format_period(period)} {stat}"
+    if state == "ALARM":
+        evaluated = trigger.get("EvaluationPeriods")
+        breached = trigger.get("DatapointsToAlarm") or evaluated
+        if isinstance(evaluated, int) and isinstance(breached, int):
+            return f"{subject} 최근 {evaluated}번 중 {breached}번 {rule}에 걸렸습니다."
+        return f"{subject} {rule}에 걸렸습니다."
+    if state == "OK":
+        return f"{subject} {rule}에 걸리지 않습니다."
+    return f"{rule}을 판단할 데이터가 모자랍니다."
+
+
+def recent_datapoints(reason: str) -> str | None:
+    points = []
+    for value, stamp in DATAPOINT.findall(reason):
+        when = parse_time(stamp + "+0000", "%d/%m/%y %H:%M:%S%z")
+        try:
+            number = float(value)
+        except ValueError:
+            continue
+        points.append(
+            format_number(number)
+            if when is None
+            else f"{format_number(number)}({when:%H:%M})"
+        )
+    return ", ".join(points) or None
+
+
+def parse_time(value: Any, pattern: str) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.strptime(value, pattern).astimezone(KST)
+    except ValueError:
+        return None
+
+
+def format_period(seconds: int) -> str:
+    if seconds % 86400 == 0:
+        return f"{seconds // 86400}일"
+    if seconds % 3600 == 0:
+        return f"{seconds // 3600}시간"
+    if seconds % 60 == 0:
+        return f"{seconds // 60}분"
+    return f"{seconds}초"
+
+
+def format_number(value: float) -> str:
+    if value == int(value):
+        return f"{int(value):,}"
+    if abs(value) >= 1:
+        return f"{value:,.2f}".rstrip("0").rstrip(".")
+    return f"{value:.3g}"
 
 
 def sns_message(event: Any) -> str | None:
@@ -231,9 +340,7 @@ def build_chart_widget(
         widget["region"] = region
     threshold = trigger.get("Threshold")
     if isinstance(threshold, (int, float)):
-        widget["annotations"] = {
-            "horizontal": [{"value": threshold, "label": "Threshold"}]
-        }
+        widget["annotations"] = {"horizontal": [{"value": threshold, "label": "기준"}]}
     return widget
 
 

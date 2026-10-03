@@ -6,6 +6,7 @@ from lambda_function import (
     GRAY,
     GREEN,
     RED,
+    alarm_summary,
     build_chart_widget,
     build_payload,
     encode_multipart,
@@ -58,7 +59,7 @@ class ParseMessageTest(unittest.TestCase):
         )
         self.assertEqual(
             post_data["content"],
-            "<@&678974055365476392> [Femiwiki CPU credit balance] Threshold Crossed: 1 out of the last 1 datapoints was less than the threshold.",
+            "<@&678974055365476392> [Femiwiki CPU credit balance] 경보.",
             "An alarm should be parsed as an alarm.",
         )
         self.assertEqual(post_data["embed"]["color"], RED)
@@ -82,7 +83,7 @@ class ParseMessageTest(unittest.TestCase):
         )
         self.assertEqual(
             post_data["content"],
-            "🟢 [Test] (메시지에 NewStateReason이 없습니다)",
+            "🟢 [Test] 해제.",
             "An OK should be parsed as an OK.",
         )
         self.assertEqual(post_data["embed"]["color"], GREEN)
@@ -139,7 +140,7 @@ class ParseMessageTest(unittest.TestCase):
         )
         self.assertEqual(
             post_data["content"],
-            "<@&678974055365476392> [Femiwiki CPU credit balance] Threshold Crossed: 1 out of the last 1 datapoints [71.58514626666667 (09/04/22 21:01:00)] was less than the threshold (72.0) (minimum 1 datapoint for OK -> ALARM transition).",
+            "<@&678974055365476392> [Femiwiki CPU credit balance] 경보, 4월 10일 06:06 KST. 5분 최솟값이 최근 1번 중 1번 기준(72 미만)에 걸렸습니다. 최근 값 71.59(06:01).",
         )
         self.assertEqual(post_data["embed"]["color"], RED)
         self.assertEqual(post_data["trigger"]["MetricName"], "CPUCreditBalance")
@@ -166,11 +167,95 @@ class ParseMessageTest(unittest.TestCase):
         )
         self.assertEqual(
             post_data["content"],
-            "🟢 [_Test] 테스트",
+            "🟢 [_Test] 해제.",
             "A test alarm should be parsed as a test alarm.",
         )
         self.assertEqual(post_data["embed"]["color"], GRAY)
         self.assertIsNone(post_data["trigger"])
+
+
+class AlarmSummaryTest(unittest.TestCase):
+    def test_ok_after_insufficient_data(self):
+        self.assertEqual(
+            alarm_summary(
+                {
+                    "AlarmName": "CloudFront Requests",
+                    "NewStateValue": "OK",
+                    "NewStateReason": "Threshold Crossed: 3 out of the last 3 datapoints [3184.0 (03/10/26 01:37:00), 2856.0 (03/10/26 01:32:00), 3223.0 (03/10/26 01:27:00)] were not greater than the threshold (60000.0) (minimum 1 datapoint for ALARM -> OK transition).",
+                    "StateChangeTime": "2026-10-03T01:46:52.498+0000",
+                    "OldStateValue": "INSUFFICIENT_DATA",
+                    "Trigger": {
+                        "Statistic": "SUM",
+                        "Period": 300,
+                        "EvaluationPeriods": 3,
+                        "DatapointsToAlarm": 3,
+                        "ComparisonOperator": "GreaterThanThreshold",
+                        "Threshold": 60000.0,
+                    },
+                }
+            ),
+            "[CloudFront Requests] 해제, 10월 3일 10:46 KST. 5분 합계가 기준(60,000 초과)에 걸리지 않습니다. 최근 값 3,184(10:37), 2,856(10:32), 3,223(10:27).",
+        )
+
+    def test_insufficient_data(self):
+        self.assertEqual(
+            alarm_summary(
+                {
+                    "AlarmName": "Bounce Rate",
+                    "NewStateValue": "INSUFFICIENT_DATA",
+                    "NewStateReason": "Insufficient Data: 1 datapoint was unknown.",
+                    "StateChangeTime": "2026-10-02T17:33:39.107+0000",
+                    "Trigger": {
+                        "Statistic": "AVERAGE",
+                        "Period": 300,
+                        "EvaluationPeriods": 1,
+                        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+                        "Threshold": 0.05,
+                    },
+                }
+            ),
+            "[Bounce Rate] 데이터 부족, 10월 3일 02:33 KST. 기준(0.05 이상)을 판단할 데이터가 모자랍니다.",
+        )
+
+    def test_extended_statistic_and_hours(self):
+        self.assertEqual(
+            alarm_summary(
+                {
+                    "AlarmName": "Latency",
+                    "NewStateValue": "ALARM",
+                    "Trigger": {
+                        "ExtendedStatistic": "p90",
+                        "Period": 3600,
+                        "EvaluationPeriods": 2,
+                        "ComparisonOperator": "GreaterThanThreshold",
+                        "Threshold": 1.5,
+                    },
+                }
+            ),
+            "[Latency] 경보. 1시간 p90 값이 최근 2번 중 2번 기준(1.5 초과)에 걸렸습니다.",
+        )
+
+    def test_unknown_comparison_skips_the_condition(self):
+        self.assertEqual(
+            alarm_summary(
+                {
+                    "AlarmName": "Anomaly",
+                    "NewStateValue": "ALARM",
+                    "Trigger": {
+                        "Statistic": "SUM",
+                        "Period": 60,
+                        "ComparisonOperator": "LessThanLowerOrGreaterThanUpperThreshold",
+                    },
+                }
+            ),
+            "[Anomaly] 경보.",
+        )
+
+    def test_missing_name(self):
+        self.assertEqual(
+            alarm_summary({"NewStateValue": "OK"}),
+            "[(메시지에 AlarmName이 없습니다)] 해제.",
+        )
 
 
 class MessageToFieldsTest(unittest.TestCase):
@@ -226,7 +311,7 @@ class BuildChartWidgetTest(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            widget["annotations"]["horizontal"], [{"value": 72.0, "label": "Threshold"}]
+            widget["annotations"]["horizontal"], [{"value": 72.0, "label": "기준"}]
         )
         self.assertEqual(widget["end"], "PT0H")
 
