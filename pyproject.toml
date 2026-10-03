@@ -17,9 +17,12 @@ mastodon-discord = [
   "mastodon-py>=2.2.2",
   "requests>=2.34.2",
 ]
+sns-discord = [
+  "hgtk>=0.2.1",
+]
 
 [tool.uv]
-default-groups = ["dev", "grafana-github", "mastodon-discord"]
+default-groups = ["dev", "grafana-github", "mastodon-discord", "sns-discord"]
 
 [tool.ruff.lint]
 extend-select = [

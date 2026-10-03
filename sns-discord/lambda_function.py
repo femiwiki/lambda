@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import boto3
+import hgtk
 
 RED = 0xE83535
 GREEN = 0x2DAF32
@@ -23,13 +24,12 @@ STAT_NAMES = {
     "MINIMUM": "Minimum",
     "MAXIMUM": "Maximum",
 }
-# What each statistic is called, with the subject particle it takes
 STAT_KOREAN = {
-    "SAMPLECOUNT": "표본 수가",
-    "AVERAGE": "평균이",
-    "SUM": "합계가",
-    "MINIMUM": "최솟값이",
-    "MAXIMUM": "최댓값이",
+    "SAMPLECOUNT": "표본 수",
+    "AVERAGE": "평균",
+    "SUM": "합계",
+    "MINIMUM": "최솟값",
+    "MAXIMUM": "최댓값",
 }
 COMPARISON_KOREAN = {
     "GreaterThanThreshold": "초과",
@@ -204,7 +204,7 @@ def alarm_condition(trigger: dict[str, Any], state: Any) -> str | None:
     comparison = COMPARISON_KOREAN.get(trigger.get("ComparisonOperator"))
     raw_stat = trigger.get("ExtendedStatistic") or trigger.get("Statistic")
     stat = (
-        STAT_KOREAN.get(raw_stat.upper(), f"{raw_stat} 값이")
+        STAT_KOREAN.get(raw_stat.upper(), f"{raw_stat} 값")
         if isinstance(raw_stat, str)
         else None
     )
@@ -217,7 +217,7 @@ def alarm_condition(trigger: dict[str, Any], state: Any) -> str | None:
         return None
 
     rule = f"기준({format_number(threshold)} {comparison})"
-    subject = f"{format_period(period)} {stat}"
+    subject = f"{format_period(period)} {hgtk.josa.attach(stat, hgtk.josa.I_GA)}"
     if state == "ALARM":
         evaluated = trigger.get("EvaluationPeriods")
         breached = trigger.get("DatapointsToAlarm") or evaluated
