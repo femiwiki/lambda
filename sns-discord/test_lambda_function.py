@@ -6,13 +6,12 @@ from lambda_function import (
     GRAY,
     GREEN,
     RED,
+    alarm_summary,
     build_chart_widget,
     build_payload,
     encode_multipart,
     fetch_chart_image,
-    message_to_fields,
     parse_message,
-    value_to_string,
 )
 
 FULL_TRIGGER = {
@@ -58,7 +57,7 @@ class ParseMessageTest(unittest.TestCase):
         )
         self.assertEqual(
             post_data["content"],
-            "<@&678974055365476392> [Femiwiki CPU credit balance] Threshold Crossed: 1 out of the last 1 datapoints was less than the threshold.",
+            "<@&678974055365476392> [Femiwiki CPU credit balance] 경보.",
             "An alarm should be parsed as an alarm.",
         )
         self.assertEqual(post_data["embed"]["color"], RED)
@@ -82,7 +81,7 @@ class ParseMessageTest(unittest.TestCase):
         )
         self.assertEqual(
             post_data["content"],
-            "🟢 [Test] (메시지에 NewStateReason이 없습니다)",
+            "🟢 [Test] 해제.",
             "An OK should be parsed as an OK.",
         )
         self.assertEqual(post_data["embed"]["color"], GREEN)
@@ -139,7 +138,7 @@ class ParseMessageTest(unittest.TestCase):
         )
         self.assertEqual(
             post_data["content"],
-            "<@&678974055365476392> [Femiwiki CPU credit balance] Threshold Crossed: 1 out of the last 1 datapoints [71.58514626666667 (09/04/22 21:01:00)] was less than the threshold (72.0) (minimum 1 datapoint for OK -> ALARM transition).",
+            "<@&678974055365476392> [Femiwiki CPU credit balance] 경보, 4월 10일 06:06 KST. 5분 최솟값이 최근 1번 중 1번 기준(72 미만)에 걸렸습니다. 최근 값 71.59(06:01).",
         )
         self.assertEqual(post_data["embed"]["color"], RED)
         self.assertEqual(post_data["trigger"]["MetricName"], "CPUCreditBalance")
@@ -166,46 +165,160 @@ class ParseMessageTest(unittest.TestCase):
         )
         self.assertEqual(
             post_data["content"],
-            "🟢 [_Test] 테스트",
+            "🟢 [_Test] 해제.",
             "A test alarm should be parsed as a test alarm.",
         )
         self.assertEqual(post_data["embed"]["color"], GRAY)
         self.assertIsNone(post_data["trigger"])
 
-
-class MessageToFieldsTest(unittest.TestCase):
-    def test_message_to_fields(self):
-        fields = message_to_fields(
+    def test_description_is_the_alarm_description(self):
+        post_data = parse_message(
             {
-                "NewStateValue": "ALARM",
-                "OldStateValue": "OK",
-                "NewStateReason": "Threshold Crossed: 1 out of the last 1 datapoints [71.58514626666667 (09/04/22 21:01:00)] was less than the threshold (72.0) (minimum 1 datapoint for OK -> ALARM transition).",
+                "Records": [
+                    {
+                        "Sns": {
+                            "Message": json.dumps(
+                                {
+                                    "AlarmName": "_Test",
+                                    "AlarmDescription": "시험입니다.",
+                                    "NewStateValue": "ALARM",
+                                    "AWSAccountId": "302617221463",
+                                },
+                                ensure_ascii=False,
+                            )
+                        }
+                    }
+                ]
             }
         )
-        self.assertEqual(len(fields), 2, "NewStateReason should be removed")
-        self.assertEqual(fields[1]["value"], "OK")
-
-        fields = message_to_fields(
-            {
-                "InsufficientDataActions": [],
-                "OKActions": [],
-            }
-        )
-        self.assertEqual(len(fields), 2)
-        self.assertEqual(fields[1]["value"], "`[]`")
-
-
-class ValueToStringTest(unittest.TestCase):
-    def test_value_to_string(self):
-        self.assertEqual(value_to_string(None), ("`null`", True))
-        self.assertEqual(value_to_string("Foo"), ("Foo", True))
         self.assertEqual(
-            value_to_string(["Foo", "Bar"]),
-            ('```json\n[\n  "Foo",\n  "Bar"\n]\n```', False),
+            post_data["embed"], {"color": GRAY, "description": "시험입니다."}
         )
+
+    def test_plain_text_is_dumped(self):
+        post_data = parse_message({"Records": [{"Sns": {"Message": "hello"}}]})
+        self.assertEqual(post_data["embed"]["description"], "```json\nhello\n```")
+
+    def test_budget(self):
+        message = (
+            "AWS Budget Notification October 03, 2026\n"
+            "AWS Account 302617221463\n\n"
+            "Dear AWS Customer,\n\n"
+            "You requested that we alert you when the ACTUAL Cost associated with"
+            " your lambda budget is greater than $0.01 for the current month."
+            " The ACTUAL Cost associated with this budget is $0.02.\n\n"
+            "Budget Name: lambda\n"
+            "Budget Type: Cost\n"
+            "Budgeted Amount: $1.00\n"
+            "Alert Type: ACTUAL\n"
+            "Alert Threshold: > $0.01\n"
+            "ACTUAL Amount: $0.02\n\n"
+            "[1] https://console.aws.amazon.com/billing/home#/budgets\n"
+        )
+        post_data = parse_message({"Records": [{"Sns": {"Message": message}}]})
         self.assertEqual(
-            value_to_string({"Foo": "bar"}),
-            ('```json\n{\n  "Foo": "bar"\n}\n```', False),
+            post_data["content"],
+            "<@&678974055365476392> [예산 lambda] 실제 비용이 알림 기준(> $0.01)을"
+            " 넘었습니다. 실제 $0.02, 예산 $1.00.",
+        )
+        self.assertEqual(post_data["embed"], {"color": RED, "description": ""})
+
+    def test_forecasted_budget(self):
+        message = (
+            "Budget Name: lambda\n"
+            "Alert Type: FORECASTED\n"
+            "Alert Threshold: > $0.01\n"
+            "FORECASTED Amount: $0.05\n"
+        )
+        post_data = parse_message({"Records": [{"Sns": {"Message": message}}]})
+        self.assertEqual(
+            post_data["content"],
+            "<@&678974055365476392> [예산 lambda] 예상 비용이 알림 기준(> $0.01)을"
+            " 넘었습니다. 예상 $0.05.",
+        )
+
+
+class AlarmSummaryTest(unittest.TestCase):
+    def test_ok_after_insufficient_data(self):
+        self.assertEqual(
+            alarm_summary(
+                {
+                    "AlarmName": "CloudFront Requests",
+                    "NewStateValue": "OK",
+                    "NewStateReason": "Threshold Crossed: 3 out of the last 3 datapoints [3184.0 (03/10/26 01:37:00), 2856.0 (03/10/26 01:32:00), 3223.0 (03/10/26 01:27:00)] were not greater than the threshold (60000.0) (minimum 1 datapoint for ALARM -> OK transition).",
+                    "StateChangeTime": "2026-10-03T01:46:52.498+0000",
+                    "OldStateValue": "INSUFFICIENT_DATA",
+                    "Trigger": {
+                        "Statistic": "SUM",
+                        "Period": 300,
+                        "EvaluationPeriods": 3,
+                        "DatapointsToAlarm": 3,
+                        "ComparisonOperator": "GreaterThanThreshold",
+                        "Threshold": 60000.0,
+                    },
+                }
+            ),
+            "[CloudFront Requests] 해제, 10월 3일 10:46 KST. 5분 합계가 기준(60,000 초과)에 걸리지 않습니다. 최근 값 3,184(10:37), 2,856(10:32), 3,223(10:27).",
+        )
+
+    def test_insufficient_data(self):
+        self.assertEqual(
+            alarm_summary(
+                {
+                    "AlarmName": "Bounce Rate",
+                    "NewStateValue": "INSUFFICIENT_DATA",
+                    "NewStateReason": "Insufficient Data: 1 datapoint was unknown.",
+                    "StateChangeTime": "2026-10-02T17:33:39.107+0000",
+                    "Trigger": {
+                        "Statistic": "AVERAGE",
+                        "Period": 300,
+                        "EvaluationPeriods": 1,
+                        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+                        "Threshold": 0.05,
+                    },
+                }
+            ),
+            "[Bounce Rate] 데이터 부족, 10월 3일 02:33 KST. 기준(0.05 이상)을 판단할 데이터가 모자랍니다.",
+        )
+
+    def test_extended_statistic_and_hours(self):
+        self.assertEqual(
+            alarm_summary(
+                {
+                    "AlarmName": "Latency",
+                    "NewStateValue": "ALARM",
+                    "Trigger": {
+                        "ExtendedStatistic": "p90",
+                        "Period": 3600,
+                        "EvaluationPeriods": 2,
+                        "ComparisonOperator": "GreaterThanThreshold",
+                        "Threshold": 1.5,
+                    },
+                }
+            ),
+            "[Latency] 경보. 1시간 p90 값이 최근 2번 중 2번 기준(1.5 초과)에 걸렸습니다.",
+        )
+
+    def test_unknown_comparison_skips_the_condition(self):
+        self.assertEqual(
+            alarm_summary(
+                {
+                    "AlarmName": "Anomaly",
+                    "NewStateValue": "ALARM",
+                    "Trigger": {
+                        "Statistic": "SUM",
+                        "Period": 60,
+                        "ComparisonOperator": "LessThanLowerOrGreaterThanUpperThreshold",
+                    },
+                }
+            ),
+            "[Anomaly] 경보.",
+        )
+
+    def test_missing_name(self):
+        self.assertEqual(
+            alarm_summary({"NewStateValue": "OK"}),
+            "[(메시지에 AlarmName이 없습니다)] 해제.",
         )
 
 
@@ -226,7 +339,7 @@ class BuildChartWidgetTest(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            widget["annotations"]["horizontal"], [{"value": 72.0, "label": "Threshold"}]
+            widget["annotations"]["horizontal"], [{"value": 72.0, "label": "기준"}]
         )
         self.assertEqual(widget["end"], "PT0H")
 
@@ -299,36 +412,24 @@ class FetchChartImageTest(unittest.TestCase):
 
 
 class BuildPayloadTest(unittest.TestCase):
-    def test_no_chart_keeps_fields_and_description(self):
-        post_data = {
-            "content": "hi",
-            "embed": {
-                "color": RED,
-                "description": "```json\n{}\n```",
-                "fields": [{"name": "a", "value": "b", "inline": True}],
-            },
-        }
+    def test_no_chart(self):
+        post_data = {"content": "hi", "embed": {"color": RED, "description": "설명"}}
         payload = build_payload(post_data, None)
-        embed = payload["embeds"][0]
-        self.assertEqual(embed["description"], "```json\n{}\n```")
-        self.assertEqual(embed["fields"], [{"name": "a", "value": "b", "inline": True}])
-        self.assertNotIn("image", embed)
+        self.assertEqual(payload["embeds"], [{"color": RED, "description": "설명"}])
 
-    def test_chart_strips_fields_and_description(self):
-        post_data = {
-            "content": "hi",
-            "embed": {
-                "color": RED,
-                "description": "```json\n{}\n```",
-                "fields": [{"name": "a", "value": "b", "inline": True}],
-            },
-        }
+    def test_chart_keeps_the_description(self):
+        post_data = {"content": "hi", "embed": {"color": RED, "description": "설명"}}
         payload = build_payload(post_data, b"\x89PNG...")
-        embed = payload["embeds"][0]
-        self.assertEqual(embed["description"], "")
-        self.assertEqual(embed["fields"], [])
-        self.assertEqual(embed["image"], {"url": "attachment://chart.png"})
-        self.assertEqual(embed["color"], RED)
+        self.assertEqual(
+            payload["embeds"],
+            [
+                {
+                    "color": RED,
+                    "description": "설명",
+                    "image": {"url": "attachment://chart.png"},
+                }
+            ],
+        )
 
 
 if __name__ == "__main__":
