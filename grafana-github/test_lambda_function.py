@@ -4,17 +4,19 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import lambda_function
-from lambda_function import authorized, lambda_handler, record, render
+from lambda_function import authorized, lambda_handler, record, render, title
 
 BOT = "femiwiki-alerts[bot]"
 
 
-def alert(status: str = "firing", **annotations: str) -> dict:
+def alert(
+    status: str = "firing", starts: str = "2026-10-01T12:00:00.123Z", **annotations: str
+) -> dict:
     return {
         "status": status,
         "labels": {"alertname": "Disk almost full"},
         "annotations": {"summary": "/ is 92% full", **annotations},
-        "startsAt": "2026-10-01T12:00:00.123Z",
+        "startsAt": starts,
         "endsAt": "2026-10-01T13:30:00Z"
         if status == "resolved"
         else "0001-01-01T00:00:00Z",
@@ -59,7 +61,7 @@ class TestRecord(unittest.TestCase):
         record(r, BOT, payload())
         r.get_issues.assert_called_once_with(state="open")
         kwargs = r.create_issue.call_args.kwargs
-        self.assertEqual(kwargs["title"], "Disk almost full")
+        self.assertEqual(kwargs["title"], "Disk almost full (10/1 21:00 KST)")
         self.assertIn("/ is 92% full", kwargs["body"])
 
     def test_mentions_the_team_only_when_opening(self):
@@ -78,6 +80,20 @@ class TestRecord(unittest.TestCase):
         record(r, BOT, payload())
         existing.create_comment.assert_called_once()
         r.create_issue.assert_not_called()
+
+    def test_comments_on_an_open_issue_titled_with_a_start_time(self):
+        existing = issue("Disk almost full (9/30 08:15 KST)")
+        r = repo([existing])
+        record(r, BOT, payload())
+        existing.create_comment.assert_called_once()
+        r.create_issue.assert_not_called()
+
+    def test_ignores_a_rule_whose_name_extends_this_one(self):
+        other = issue("Disk almost full on /data (9/30 08:15 KST)")
+        r = repo([other])
+        record(r, BOT, payload())
+        other.create_comment.assert_not_called()
+        r.create_issue.assert_called_once()
 
     def test_ignores_pull_requests_other_titles_and_people(self):
         pr = issue("Disk almost full", pull_request=object())
@@ -99,6 +115,19 @@ class TestRecord(unittest.TestCase):
         r = repo([])
         record(r, BOT, payload("resolved"))
         r.create_issue.assert_not_called()
+
+
+class TestTitle(unittest.TestCase):
+    def test_uses_the_earliest_firing_start_in_kst(self):
+        p = payload()
+        p["alerts"] = [
+            alert(starts="2026-10-01T18:00:00Z"),
+            alert(starts="2026-10-01T16:30:00.123456789Z"),
+            alert("resolved", starts="2026-10-01T10:00:00Z"),
+        ]
+        self.assertEqual(
+            title("Disk almost full", p), "Disk almost full (10/2 01:30 KST)"
+        )
 
 
 class TestRender(unittest.TestCase):

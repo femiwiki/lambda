@@ -1,8 +1,10 @@
 """Keep one GitHub issue per Grafana alert rule that only operators need to act on.
 
 Grafana's webhook contact point posts its default payload to this function's
-URL. The first firing opens an issue titled with the rule's name; later
-notifications for the same rule, repeats and resolves alike, become comments.
+URL. The first firing opens an issue titled with the rule's name and the time it
+started in KST, so issues for the same rule can be told apart; later
+notifications for the same rule, repeats and resolves alike, become comments
+while that issue is open.
 A new issue mentions GITHUB_MENTION, a team, so its members get a push.
 The pull request that fixes the cause closes the issue.
 """
@@ -11,10 +13,13 @@ import base64
 import hmac
 import json
 import os
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 from github import Auth, GithubIntegration
 from github.Repository import Repository
+
+KST = timezone(timedelta(hours=9), "KST")
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, int]:
@@ -52,17 +57,37 @@ def authorized(header: str, token: str) -> bool:
 def record(
     repo: Repository, bot: str, payload: dict[str, Any], mention: str = ""
 ) -> None:
-    title = (
+    rule = (
         payload.get("groupLabels", {}).get("alertname")
         or payload["commonLabels"]["alertname"]
     )
     text = render(payload)
     for issue in repo.get_issues(state="open"):
-        if issue.title == title and issue.user.login == bot and not issue.pull_request:
+        if (
+            is_for(issue.title, rule)
+            and issue.user.login == bot
+            and not issue.pull_request
+        ):
             issue.create_comment(text)
             return
     if payload["status"] == "firing":
-        repo.create_issue(title=title, body=f"{text}\n\n{mention}".strip())
+        repo.create_issue(
+            title=title(rule, payload), body=f"{text}\n\n{mention}".strip()
+        )
+
+
+def is_for(title: str, rule: str) -> bool:
+    """Whether an issue title is the rule's, with or without the start time."""
+    return title == rule or title.startswith(f"{rule} (")
+
+
+def title(rule: str, payload: dict[str, Any]) -> str:
+    """The rule's name and when its earliest firing alert started, in KST."""
+    starts = min(
+        alert["startsAt"] for alert in payload["alerts"] if alert["status"] == "firing"
+    )
+    start = datetime.fromisoformat(starts[:16]).replace(tzinfo=UTC).astimezone(KST)
+    return f"{rule} ({start.month}/{start.day} {start:%H:%M} KST)"
 
 
 def render(payload: dict[str, Any]) -> str:
