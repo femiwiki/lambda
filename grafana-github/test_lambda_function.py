@@ -63,6 +63,7 @@ class TestRecord(unittest.TestCase):
         kwargs = r.create_issue.call_args.kwargs
         self.assertEqual(kwargs["title"], "Disk almost full (10/1 21:00 KST)")
         self.assertIn("/ is 92% full", kwargs["body"])
+        self.assertEqual(kwargs["labels"], ["alert"])
 
     def test_mentions_the_team_only_when_opening(self):
         r = repo([])

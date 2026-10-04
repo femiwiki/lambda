@@ -5,7 +5,8 @@ URL. The first firing opens an issue titled with the rule's name and the time it
 started in KST, so issues for the same rule can be told apart; later
 notifications for the same rule, repeats and resolves alike, become comments
 while that issue is open.
-A new issue mentions GITHUB_MENTION, a team, so its members get a push.
+A new issue carries the label LABEL and mentions GITHUB_MENTION, a team, so its
+members get a push.
 The pull request that fixes the cause closes the issue.
 """
 
@@ -20,6 +21,7 @@ from github import Auth, GithubIntegration
 from github.Repository import Repository
 
 KST = timezone(timedelta(hours=9), "KST")
+LABEL = "alert"
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, int]:
@@ -72,7 +74,9 @@ def record(
             return
     if payload["status"] == "firing":
         repo.create_issue(
-            title=title(rule, payload), body=f"{text}\n\n{mention}".strip()
+            title=title(rule, payload),
+            body=f"{text}\n\n{mention}".strip(),
+            labels=[LABEL],
         )
 
 

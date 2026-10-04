@@ -44,7 +44,8 @@ Keeps one issue in femiwiki/infra per Grafana alert rule labelled
 `impact=operators`. Grafana's webhook contact point calls the function URL from
 femiwiki/infra `aws/lambda.tf`; the first firing opens an issue named after the
 rule and its start time in KST, such as `Disk almost full (10/3 21:55 KST)`, and
-later notifications become comments while it is open. `deploy.yml` sets:
+later notifications become comments while it is open. New issues get the
+`alert` label. `deploy.yml` sets:
 
 - `GITHUB_APP_CLIENT_ID`: the alerts GitHub App, installed on femiwiki/infra
   with Issues read and write
