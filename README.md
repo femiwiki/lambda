@@ -33,7 +33,8 @@ unless it is private or direct. It runs every minute from an EventBridge rule in
 repository's secrets:
 
 - `MASTODON_INSTANCE`: e.g. `https://mastodon.social`
-- `MASTODON_TOKEN`: scopes `read:notifications read:statuses write:statuses`
+- `MASTODON_TOKEN`: scopes `read:notifications read:statuses write:statuses`;
+  without `write:statuses` the function logs it and only relays
 - `ALLOWED_ACCTS`: comma-separated, e.g. `lens0021,someone@example.org`
 - `CURSOR_PARAMETER`: SSM parameter holding the last notification seen
 - `DISCORD_BOT_TOKEN`: a bot that can view, read history in, and send to the

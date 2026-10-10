@@ -17,7 +17,7 @@ from typing import Any
 import boto3
 import html2text
 import requests
-from mastodon import Mastodon, MastodonNotFoundError
+from mastodon import Mastodon, MastodonAPIError, MastodonNotFoundError
 
 USER_AGENT = "femiwiki-lambda-mastodon-discord (+https://github.com/femiwiki/lambda)"
 DISCORD_API = "https://discord.com/api/v10"
@@ -60,11 +60,12 @@ def lambda_handler(event: Any, context: Any) -> None:
             write_cursor(parameter, str(latest[0].id))
         return
 
+    can_boost = True
     for notification in fetch_mentions(mastodon, cursor):
         status = notification.get("status")
         if status and normalize_acct(notification.account.acct, instance) in allowed:
             # Boosting again is harmless, posting to Discord again is not.
-            boost(status, mastodon)
+            can_boost = can_boost and boost(status, mastodon)
             relay(status, instance, mastodon, discord, channel_id)
         # Moved one mention at a time, so a failure retries only what is left.
         write_cursor(parameter, str(notification.id))
@@ -93,19 +94,26 @@ def fetch_mentions(mastodon: Mastodon, cursor: str) -> list[Any]:
     return mentions
 
 
-def boost(status: Any, mastodon: Mastodon) -> None:
+def boost(status: Any, mastodon: Mastodon) -> bool:
+    """False when the token cannot boost at all, so the run stops trying."""
     if status.visibility not in BOOSTABLE:
         log("skipped", status, f"visibility is {status.visibility}")
-        return
+        return True
     if status.reblogged:
         log("skipped", status, "already boosted")
-        return
+        return True
     try:
         mastodon.status_reblog(status.id)
     except MastodonNotFoundError:
         log("skipped", status, "deleted")
-        return
+        return True
+    except MastodonAPIError as error:
+        if error.args[1:2] != (403,):
+            raise
+        log("skipped", status, "token lacks write:statuses, no boosts this run")
+        return False
     log("boosted", status)
+    return True
 
 
 def log(action: str, status: Any, reason: str | None = None) -> None:

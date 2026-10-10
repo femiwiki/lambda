@@ -16,7 +16,7 @@ from lambda_function import (
     parse_allowed,
     snowflake,
 )
-from mastodon import MastodonNotFoundError
+from mastodon import MastodonAPIError, MastodonNotFoundError
 from mastodon.return_types import Notification, Status
 from mastodon.types_base import try_cast_recurse
 
@@ -174,6 +174,22 @@ class BoostTest(unittest.TestCase):
         mastodon = MagicMock()
         mastodon.status_reblog.side_effect = MastodonNotFoundError("gone")
         with patch("builtins.print"):
+            self.assertTrue(boost(notification("1", "lens0021").status, mastodon))
+
+    def test_a_missing_scope_stops_boosting(self):
+        mastodon = MagicMock()
+        mastodon.status_reblog.side_effect = MastodonAPIError(
+            "Mastodon API returned error", 403, "Forbidden", "outside the scopes"
+        )
+        with patch("builtins.print"):
+            self.assertFalse(boost(notification("1", "lens0021").status, mastodon))
+
+    def test_other_errors_are_raised(self):
+        mastodon = MagicMock()
+        mastodon.status_reblog.side_effect = MastodonAPIError(
+            "Mastodon API returned error", 422, "Unprocessable", "nope"
+        )
+        with patch("builtins.print"), self.assertRaises(MastodonAPIError):
             boost(notification("1", "lens0021").status, mastodon)
 
 
@@ -203,12 +219,13 @@ ENV = {
 
 @patch.dict(os.environ, ENV)
 class HandlerTest(unittest.TestCase):
-    def run_handler(self, cursor, pages, messages=(), discord_error=None):
+    def run_handler(self, cursor, pages, messages=(), discord_error=None, reblog=None):
         mastodon = MagicMock()
         mastodon.notifications.side_effect = lambda **kwargs: pages[
             kwargs.get("min_id")
         ]
         mastodon.status.return_value = ALERT_POST
+        mastodon.status_reblog.side_effect = reblog
         session = discord_session(list(messages))
         session.post.return_value.raise_for_status.side_effect = discord_error
         self.mastodon = mastodon
@@ -280,6 +297,19 @@ class HandlerTest(unittest.TestCase):
         self.mastodon.status_reblog.assert_not_called()
         self.assertEqual(len(posts), 1)
         self.assertEqual(written, ["11"])
+
+    def test_a_missing_scope_still_relays_and_moves_the_cursor(self):
+        def reblog(status_id):
+            raise MastodonAPIError("error", 403, "Forbidden", "outside the scopes")
+
+        pages = {
+            "10": [notification("11", "lens0021"), notification("12", "lens0021")],
+            "12": [],
+        }
+        posts, written = self.run_handler("10", pages, reblog=reblog)
+        self.mastodon.status_reblog.assert_called_once_with("311")
+        self.assertEqual(len(posts), 2)
+        self.assertEqual(written, ["11", "12"])
 
     def test_a_private_mention_is_relayed_without_a_boost(self):
         posts, written = self.run_handler(
