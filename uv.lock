@@ -511,6 +511,9 @@ lint = [
     { name = "ruff" },
     { name = "ty" },
 ]
+mastodon-boost = [
+    { name = "mastodon-py" },
+]
 mastodon-discord = [
     { name = "html2text" },
     { name = "mastodon-py" },
@@ -529,6 +532,7 @@ lint = [
     { name = "ruff", specifier = "==0.16.9" },
     { name = "ty", specifier = "==0.0.84" },
 ]
+mastodon-boost = [{ name = "mastodon-py", specifier = ">=2.2.2" }]
 mastodon-discord = [
     { name = "html2text", specifier = ">=2025.4.15" },
     { name = "mastodon-py", specifier = ">=2.2.2" },

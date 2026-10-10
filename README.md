@@ -10,6 +10,7 @@ uvx ruff check .
 uvx ty check .
 uv run python -m unittest discover -s sns-discord
 uv run python -m unittest discover -s mastodon-discord
+uv run python -m unittest discover -s mastodon-boost
 uv run python -m unittest discover -s grafana-github
 uv run python -m unittest discover -s bounce-handler
 
@@ -38,6 +39,19 @@ repository's secrets:
 - `DISCORD_BOT_TOKEN`: a bot that can view, read history in, and send to the
   channel, with the Message Content intent
 - `DISCORD_CHANNEL_ID`: the channel Grafana posts alerts to
+
+## mastodon-boost
+
+Boosts mentions of the wiki's Mastodon status account from the accounts in
+`ALLOWED_ACCTS`, so their answers to an alert show on the status account. Private
+and direct mentions cannot be boosted and are skipped. It runs every minute from
+an EventBridge rule in femiwiki/infra `aws/lambda.tf`. `deploy.yml` sets these
+variables, the token from this repository's `MASTODON_BOOST_TOKEN` secret:
+
+- `MASTODON_INSTANCE`: e.g. `https://mastodon.social`
+- `MASTODON_TOKEN`: scopes `read:notifications write:statuses`
+- `ALLOWED_ACCTS`: comma-separated, e.g. `lens0021,someone@example.org`
+- `CURSOR_PARAMETER`: SSM parameter holding the last notification seen
 
 ## grafana-github
 
