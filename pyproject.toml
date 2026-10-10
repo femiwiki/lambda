@@ -12,6 +12,9 @@ lint = [
   "ruff==0.16.9",
   "ty==0.0.84",
 ]
+mastodon-boost = [
+  "mastodon-py>=2.2.2",
+]
 mastodon-discord = [
   "html2text>=2025.4.15",
   "mastodon-py>=2.2.2",
@@ -22,7 +25,13 @@ sns-discord = [
 ]
 
 [tool.uv]
-default-groups = ["dev", "grafana-github", "mastodon-discord", "sns-discord"]
+default-groups = [
+  "dev",
+  "grafana-github",
+  "mastodon-boost",
+  "mastodon-discord",
+  "sns-discord",
+]
 
 [tool.ruff.lint]
 extend-select = [
