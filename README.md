@@ -11,6 +11,7 @@ uvx ty check .
 uv run python -m unittest discover -s sns-discord
 uv run python -m unittest discover -s mastodon-discord
 uv run python -m unittest discover -s grafana-github
+uv run python -m unittest discover -s bounce-handler
 
 # Make into zip file
 zip -j lambda.zip sns-discord/lambda_function.py
@@ -53,6 +54,18 @@ later notifications become comments while it is open. New issues get the
 - `GITHUB_MENTION`: `@femiwiki/pager`, mentioned in each new issue
 - `GITHUB_REPOSITORY`: `femiwiki/infra`
 - `WEBHOOK_TOKEN`: the bearer token Grafana sends
+
+## bounce-handler
+
+Hands SES permanent bounces to MediaWiki's BounceHandler. SES in us-east-1
+publishes bounce notifications to an SNS topic that the function subscribes to,
+from femiwiki/infra `aws/lambda.tf`. For mail the wiki sent from a VERP address,
+it posts a minimal delivery status report to `action=bouncehandler` with the
+token from SSM in the POST body (femiwiki/docker-mediawiki#215). `deploy.yml`
+sets:
+
+- `API_URL`: `https://femiwiki.com/api.php`
+- `TOKEN_PARAMETER`: the SecureString parameter holding the token
 
 &nbsp;
 

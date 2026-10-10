@@ -35,7 +35,8 @@ jobs:
           all='[
             {"dir": "sns-discord", "function": "sns-discord", "region": "ap-northeast-2"},
             {"dir": "mastodon-discord", "function": "mastodon-discord", "region": "ap-northeast-2"},
-            {"dir": "grafana-github", "function": "grafana-github", "region": "ap-northeast-2"}
+            {"dir": "grafana-github", "function": "grafana-github", "region": "ap-northeast-2"},
+            {"dir": "bounce-handler", "function": "bounce-handler", "region": "ap-northeast-2"}
           ]'
           changed=$(git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null || echo .github/workflows/deploy.yml)
           if [ "$EVENT" = workflow_dispatch ] || grep -qxE 'uv.lock|.github/workflows/deploy.yml' <<< "$changed"; then
@@ -126,6 +127,14 @@ jobs:
             GITHUB_MENTION: "@femiwiki/pager",
             GITHUB_REPOSITORY: "femiwiki/infra",
             WEBHOOK_TOKEN: env.WEBHOOK_TOKEN
+          }}' > environment.json
+
+      - name: Set the environment of bounce-handler
+        if: matrix.target.dir == 'bounce-handler'
+        run: |
+          jq -n '{Variables: {
+            API_URL: "https://femiwiki.com/api.php",
+            TOKEN_PARAMETER: "/mediawiki/bounce_handler/token"
           }}' > environment.json
 
       - name: Update the configuration
