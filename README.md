@@ -46,7 +46,9 @@ Boosts mentions of the wiki's Mastodon status account from the accounts in
 `ALLOWED_ACCTS`, so their answers to an alert show on the status account. Private
 and direct mentions cannot be boosted and are skipped. It runs every minute from
 an EventBridge rule in femiwiki/infra `aws/lambda.tf`. `deploy.yml` sets these
-variables, the token from this repository's `MASTODON_BOOST_TOKEN` secret:
+variables, the token from this repository's `MASTODON_BOOST_TOKEN` secret, which
+femiwiki/infra `github/secrets.tf` sets from the `LAMBDA_MASTODON_BOOST_TOKEN`
+item in the 1Password `infra` vault:
 
 - `MASTODON_INSTANCE`: e.g. `https://mastodon.social`
 - `MASTODON_TOKEN`: scopes `read:notifications write:statuses`
