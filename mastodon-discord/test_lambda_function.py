@@ -4,7 +4,9 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import lambda_function
+import requests
 from lambda_function import (
+    boost,
     fetch_mentions,
     find_alert_message,
     format_content,
@@ -14,6 +16,7 @@ from lambda_function import (
     parse_allowed,
     snowflake,
 )
+from mastodon import MastodonNotFoundError
 from mastodon.return_types import Notification, Status
 from mastodon.types_base import try_cast_recurse
 
@@ -24,11 +27,19 @@ def account(acct: str) -> dict:
     return {"id": "1", "acct": acct, "username": acct, "display_name": ""}
 
 
-def status(status_id: str, acct: str, in_reply_to_id: str | None = "200") -> dict:
+def status(
+    status_id: str,
+    acct: str,
+    in_reply_to_id: str | None = "200",
+    visibility: str = "public",
+    reblogged: bool = False,
+) -> dict:
     return {
         "id": status_id,
         "created_at": "2026-09-30T00:01:00.000Z",
         "in_reply_to_id": in_reply_to_id,
+        "visibility": visibility,
+        "reblogged": reblogged,
         "url": f"https://mastodon.social/@{acct}/{status_id}",
         "content": '<p><span class="h-card"><a href="https://mastodon.social/@femiwiki_status">@<span>femiwiki_status</span></a></span> 확인했습니다</p>',
         "account": account(acct),
@@ -140,6 +151,32 @@ class FindAlertMessageTest(unittest.TestCase):
         self.assertIsNone(find_alert_message(ALERT_POST, discord_session([]), "42"))
 
 
+class BoostTest(unittest.TestCase):
+    def boost(self, **kwargs) -> MagicMock:
+        mastodon = MagicMock()
+        with patch("builtins.print"):
+            boost(notification("1", "lens0021", **kwargs).status, mastodon)
+        return mastodon
+
+    def test_boosts_public_and_unlisted(self):
+        for visibility in ("public", "unlisted"):
+            mastodon = self.boost(visibility=visibility)
+            mastodon.status_reblog.assert_called_once_with("301")
+
+    def test_skips_private_and_direct(self):
+        for visibility in ("private", "direct"):
+            self.boost(visibility=visibility).status_reblog.assert_not_called()
+
+    def test_skips_what_is_already_boosted(self):
+        self.boost(reblogged=True).status_reblog.assert_not_called()
+
+    def test_a_deleted_status_is_not_an_error(self):
+        mastodon = MagicMock()
+        mastodon.status_reblog.side_effect = MastodonNotFoundError("gone")
+        with patch("builtins.print"):
+            boost(notification("1", "lens0021").status, mastodon)
+
+
 class FetchMentionsTest(unittest.TestCase):
     def test_pages_oldest_first(self):
         pages = {
@@ -166,14 +203,16 @@ ENV = {
 
 @patch.dict(os.environ, ENV)
 class HandlerTest(unittest.TestCase):
-    def run_handler(self, cursor, pages, messages=()):
+    def run_handler(self, cursor, pages, messages=(), discord_error=None):
         mastodon = MagicMock()
         mastodon.notifications.side_effect = lambda **kwargs: pages[
             kwargs.get("min_id")
         ]
         mastodon.status.return_value = ALERT_POST
         session = discord_session(list(messages))
-        written = []
+        session.post.return_value.raise_for_status.side_effect = discord_error
+        self.mastodon = mastodon
+        self.written = written = []
         with (
             patch.object(lambda_function, "Mastodon", return_value=mastodon),
             patch.object(lambda_function.requests, "Session", return_value=session),
@@ -181,6 +220,7 @@ class HandlerTest(unittest.TestCase):
             patch.object(
                 lambda_function, "write_cursor", lambda p, v: written.append(v)
             ),
+            patch("builtins.print"),
         ):
             lambda_handler({}, None)
         posts = [call.kwargs["json"] for call in session.post.call_args_list]
@@ -212,6 +252,43 @@ class HandlerTest(unittest.TestCase):
             {"10": [notification("11", "lens0021", in_reply_to_id=None)], "11": []},
         )
         self.assertNotIn("message_reference", posts[0])
+
+    def test_boosts_only_allowed_accounts(self):
+        self.run_handler(
+            "10",
+            {
+                "10": [notification("12", "someone"), notification("11", "lens0021")],
+                "12": [],
+            },
+        )
+        self.mastodon.status_reblog.assert_called_once_with("311")
+
+    def test_a_failed_relay_retries_without_boosting_again(self):
+        with self.assertRaises(requests.HTTPError):
+            self.run_handler(
+                "10",
+                {"10": [notification("11", "lens0021")], "11": []},
+                discord_error=requests.HTTPError("503"),
+            )
+        self.mastodon.status_reblog.assert_called_once_with("311")
+        self.assertEqual(self.written, [])
+
+        # Mastodon now reports the status as boosted by us.
+        posts, written = self.run_handler(
+            "10", {"10": [notification("11", "lens0021", reblogged=True)], "11": []}
+        )
+        self.mastodon.status_reblog.assert_not_called()
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(written, ["11"])
+
+    def test_a_private_mention_is_relayed_without_a_boost(self):
+        posts, written = self.run_handler(
+            "10",
+            {"10": [notification("11", "lens0021", visibility="private")], "11": []},
+        )
+        self.mastodon.status_reblog.assert_not_called()
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(written, ["11"])
 
 
 if __name__ == "__main__":

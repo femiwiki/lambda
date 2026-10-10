@@ -1,11 +1,13 @@
-"""Relay mentions of the wiki's Mastodon status account to Discord.
+"""Boost and relay mentions of the wiki's Mastodon status account to Discord.
 
 Runs on a schedule. Mentions from accounts outside ALLOWED_ACCTS are skipped.
+The status account boosts each public or unlisted mention, then relays it.
 A reply to an alert post lands in Discord as a reply to the alert message
 that carries the same id, which the Grafana templates in femiwiki/infra write
 into both.
 """
 
+import json
 import os
 import re
 import urllib.parse
@@ -15,7 +17,7 @@ from typing import Any
 import boto3
 import html2text
 import requests
-from mastodon import Mastodon
+from mastodon import Mastodon, MastodonNotFoundError
 
 USER_AGENT = "femiwiki-lambda-mastodon-discord (+https://github.com/femiwiki/lambda)"
 DISCORD_API = "https://discord.com/api/v10"
@@ -26,6 +28,7 @@ ALERT_ID = re.compile(r"\bid ([0-9a-f]{8})\b")
 # can land a little after the other.
 MATCH_SLACK = timedelta(minutes=2)
 PAGE_LIMIT = 40
+BOOSTABLE = {"public", "unlisted"}
 
 ssm = boto3.client("ssm")
 
@@ -60,6 +63,8 @@ def lambda_handler(event: Any, context: Any) -> None:
     for notification in fetch_mentions(mastodon, cursor):
         status = notification.get("status")
         if status and normalize_acct(notification.account.acct, instance) in allowed:
+            # Boosting again is harmless, posting to Discord again is not.
+            boost(status, mastodon)
             relay(status, instance, mastodon, discord, channel_id)
         # Moved one mention at a time, so a failure retries only what is left.
         write_cursor(parameter, str(notification.id))
@@ -86,6 +91,28 @@ def fetch_mentions(mastodon: Mastodon, cursor: str) -> list[Any]:
         mentions.extend(page)
         cursor = str(page[-1].id)
     return mentions
+
+
+def boost(status: Any, mastodon: Mastodon) -> None:
+    if status.visibility not in BOOSTABLE:
+        log("skipped", status, f"visibility is {status.visibility}")
+        return
+    if status.reblogged:
+        log("skipped", status, "already boosted")
+        return
+    try:
+        mastodon.status_reblog(status.id)
+    except MastodonNotFoundError:
+        log("skipped", status, "deleted")
+        return
+    log("boosted", status)
+
+
+def log(action: str, status: Any, reason: str | None = None) -> None:
+    entry = {action: str(status.id), "url": status.url}
+    if reason:
+        entry["reason"] = reason
+    print(json.dumps(entry))
 
 
 def relay(
