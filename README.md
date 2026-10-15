@@ -62,7 +62,10 @@ Keeps one issue in femiwiki/infra per Grafana alert rule labelled
 femiwiki/infra `aws/lambda.tf`; the first firing opens an issue named after the
 rule and its start time in KST, such as `Disk almost full (10/3 21:55 KST)`, and
 later notifications become comments while it is open. New issues get the
-`alert` label. `deploy.yml` sets:
+`alert` label. An EventBridge rule in `aws/access-analyzer.tf` also invokes it
+for each IAM Access Analyzer finding: an active one opens an issue of its own
+that says only that one was found, with its id and a console link, and the issue
+closes once the finding is resolved or archived. `deploy.yml` sets:
 
 - `GITHUB_APP_CLIENT_ID`: the alerts GitHub App, installed on femiwiki/infra
   with Issues read and write

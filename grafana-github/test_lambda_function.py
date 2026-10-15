@@ -4,7 +4,14 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import lambda_function
-from lambda_function import authorized, lambda_handler, record, render, title
+from lambda_function import (
+    authorized,
+    lambda_handler,
+    record,
+    record_finding,
+    render,
+    title,
+)
 
 BOT = "femiwiki-alerts[bot]"
 
@@ -46,6 +53,78 @@ def repo(open_issues: list[MagicMock]) -> MagicMock:
     r = MagicMock()
     r.get_issues.return_value = open_issues
     return r
+
+
+FINDING: dict = {
+    "source": "aws.access-analyzer",
+    "detail-type": "Access Analyzer Finding",
+    "time": "2026-10-15T11:00:00Z",
+    "region": "ap-northeast-2",
+    "detail": {
+        "id": "0f1e2d3c-aaaa-bbbb-cccc-000000000001",
+        "status": "ACTIVE",
+        "resourceType": "AWS::S3::Bucket",
+        "resource": "arn:aws:s3:::secret-bucket",
+        "principal": {"AWS": "*"},
+    },
+}
+
+
+def finding(**detail: object) -> dict:
+    return {**FINDING, "detail": {**FINDING["detail"], **detail}}
+
+
+class TestRecordFinding(unittest.TestCase):
+    def test_opens_an_issue_without_details(self):
+        r = repo([])
+        record_finding(r, FINDING, "@femiwiki/pager")
+        kwargs = r.create_issue.call_args.kwargs
+        self.assertEqual(kwargs["title"], "External access finding (10/15 20:00 KST)")
+        self.assertIn("1 new external access finding", kwargs["body"])
+        self.assertTrue(kwargs["body"].endswith("\n\n@femiwiki/pager"))
+        self.assertEqual(kwargs["labels"], ["alert"])
+        self.assertIn("Finding 0f1e2d3c-aaaa-bbbb-cccc-000000000001", kwargs["body"])
+        for secret in ("secret-bucket", "S3", "*"):
+            self.assertNotIn(secret, kwargs["title"] + kwargs["body"])
+
+    def test_skips_a_finding_that_already_has_an_issue(self):
+        existing = issue("External access finding (10/15 20:00 KST)")
+        existing.body = "Finding 0f1e2d3c-aaaa-bbbb-cccc-000000000001"
+        r = repo([existing])
+        record_finding(r, FINDING)
+        r.create_issue.assert_not_called()
+        existing.edit.assert_not_called()
+
+    def test_closes_the_issue_when_resolved(self):
+        existing = issue("External access finding (10/15 20:00 KST)")
+        existing.body = "Finding 0f1e2d3c-aaaa-bbbb-cccc-000000000001"
+        r = repo([existing])
+        resolved = finding(status="RESOLVED")
+        record_finding(r, resolved)
+        existing.edit.assert_called_once_with(state="closed", state_reason="completed")
+        r.create_issue.assert_not_called()
+
+    def test_closes_the_issue_when_deleted(self):
+        existing = issue("External access finding (10/15 20:00 KST)")
+        existing.body = "Finding 0f1e2d3c-aaaa-bbbb-cccc-000000000001"
+        deleted = finding(isDeleted=True)
+        record_finding(repo([existing]), deleted)
+        existing.edit.assert_called_once()
+
+    def test_ignores_an_archived_finding_without_an_issue(self):
+        r = repo([])
+        archived = finding(status="ARCHIVED")
+        record_finding(r, archived)
+        r.create_issue.assert_not_called()
+
+    def test_handler_skips_the_token_for_eventbridge(self):
+        r = repo([])
+        with (
+            patch.dict(os.environ, {"GITHUB_MENTION": ""}, clear=False),
+            patch.object(lambda_function, "connect", return_value=(r, BOT)),
+        ):
+            self.assertEqual(lambda_handler(FINDING, None), {"statusCode": 204})
+        r.create_issue.assert_called_once()
 
 
 class TestAuthorized(unittest.TestCase):
