@@ -8,6 +8,11 @@ while that issue is open.
 A new issue carries the label LABEL and mentions GITHUB_MENTION, a team, so its
 members get a push.
 The pull request that fixes the cause closes the issue.
+
+An EventBridge rule also invokes it for each new IAM Access Analyzer finding,
+and each active finding opens an issue of its own, closed once the finding is
+resolved or archived. The issue says only that one was found and the finding's
+id, since the repository is public; the console shows which.
 """
 
 import base64
@@ -25,6 +30,12 @@ LABEL = "alert"
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, int]:
+    # EventBridge invokes the function directly, so only IAM can reach this branch.
+    if event.get("source") == "aws.access-analyzer":
+        repo, _ = connect()
+        record_finding(repo, event, os.environ.get("GITHUB_MENTION", ""))
+        return {"statusCode": 204}
+
     headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
     if not authorized(headers.get("authorization", ""), os.environ["WEBHOOK_TOKEN"]):
         return {"statusCode": 401}
@@ -34,6 +45,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, int]:
         body = base64.b64decode(body).decode()
     payload = json.loads(body)
 
+    repo, bot = connect()
+    record(repo, bot, payload, os.environ.get("GITHUB_MENTION", ""))
+    return {"statusCode": 204}
+
+
+def connect() -> tuple[Repository, str]:
     owner, name = os.environ["GITHUB_REPOSITORY"].split("/")
     app = GithubIntegration(
         auth=Auth.AppAuth(
@@ -43,13 +60,45 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, int]:
     bot = f"{app.get_app().slug}[bot]"
     installation = app.get_repo_installation(owner, name)
     github = app.get_github_for_installation(installation.id, {"issues": "write"})
-    record(
-        github.get_repo(f"{owner}/{name}"),
-        bot,
-        payload,
-        os.environ.get("GITHUB_MENTION", ""),
+    return github.get_repo(f"{owner}/{name}"), bot
+
+
+def record_finding(repo: Repository, event: dict[str, Any], mention: str = "") -> None:
+    """Open an issue for an active finding, and close it once the finding is not."""
+    detail = event["detail"]
+    marker = f"Finding {detail['id']}"
+    existing = next(
+        (
+            issue
+            for issue in repo.get_issues(state="open", labels=[LABEL])
+            if marker in (issue.body or "")
+        ),
+        None,
     )
-    return {"statusCode": 204}
+    active = detail.get("status") == "ACTIVE" and not detail.get("isDeleted")
+    if existing is not None:
+        if not active:
+            existing.create_comment(
+                f"The finding is {detail.get('status', 'gone').lower()} now."
+            )
+            existing.edit(state="closed", state_reason="completed")
+        return
+    if not active:
+        return
+    region = event.get("region") or "ap-northeast-2"
+    start = (
+        datetime.fromisoformat(event["time"][:16]).replace(tzinfo=UTC).astimezone(KST)
+    )
+    console = f"https://{region}.console.aws.amazon.com/access-analyzer/home?region={region}#/findings"
+    text = (
+        "IAM Access Analyzer found 1 new external access finding. "
+        f"Check it in the console: {console}\n\n{marker}"
+    )
+    repo.create_issue(
+        title=f"External access finding ({start.month}/{start.day} {start:%H:%M} KST)",
+        body=f"{text}\n\n{mention}".strip(),
+        labels=[LABEL],
+    )
 
 
 def authorized(header: str, token: str) -> bool:
