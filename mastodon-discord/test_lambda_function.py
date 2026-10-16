@@ -14,6 +14,7 @@ from lambda_function import (
     parse_allowed,
     snowflake,
 )
+from mastodon import MastodonNetworkError
 from mastodon.return_types import Notification, Status
 from mastodon.types_base import try_cast_recurse
 
@@ -212,6 +213,17 @@ class HandlerTest(unittest.TestCase):
             {"10": [notification("11", "lens0021", in_reply_to_id=None)], "11": []},
         )
         self.assertNotIn("message_reference", posts[0])
+
+    @patch("builtins.print")
+    def test_a_timeout_skips_the_run(self, print_):
+        posts, written = self.run_handler("10", Timeout())
+        self.assertEqual((posts, written), ([], []))
+        print_.assert_called_once()
+
+
+class Timeout(dict):
+    def __getitem__(self, key):
+        raise MastodonNetworkError
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ import urllib.parse
 from typing import Any
 
 import boto3
-from mastodon import Mastodon, MastodonNotFoundError
+from mastodon import Mastodon, MastodonNetworkError, MastodonNotFoundError
 
 USER_AGENT = "femiwiki-lambda-mastodon-boost (+https://github.com/femiwiki/lambda)"
 PAGE_LIMIT = 40
@@ -20,6 +20,14 @@ ssm = boto3.client("ssm")
 
 
 def lambda_handler(event: Any, context: Any) -> None:
+    try:
+        run()
+    except MastodonNetworkError as error:
+        # The instance is slow now and then; the next run picks up from the cursor.
+        print(f"skipped this run: {error}")
+
+
+def run() -> None:
     instance = os.environ["MASTODON_INSTANCE"]
     allowed = parse_allowed(os.environ["ALLOWED_ACCTS"], instance)
     parameter = os.environ["CURSOR_PARAMETER"]
