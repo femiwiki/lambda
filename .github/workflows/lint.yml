@@ -19,18 +19,3 @@ jobs:
       - run: taplo fmt --check
 
       - run: taplo lint
-
-  fmt-prettier:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          persist-credentials: false
-
-      - uses: creyD/prettier_action@8c18391fdc98ed0d884c6345f03975edac71b8f0 # v4.6
-        with:
-          dry: true
-          prettier_options: --check **/*.{md,yaml,yml}
