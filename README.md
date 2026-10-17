@@ -27,9 +27,9 @@ aws lambda update-function-code --function-name DiscordNoti \
 ## mastodon-discord
 
 Relays mentions of the wiki's Mastodon status account from the accounts in
-`ALLOWED_ACCTS` to a Discord channel, as a reply to the alert message a
-Mastodon reply answers. It runs every minute from an EventBridge rule in femiwiki/infra `aws/lambda.tf`.
-`deploy.yml` sets these variables, the two tokens from this
+`ALLOWED_ACCTS` to a Discord channel, as a reply to the alert message a Mastodon
+reply answers. It runs every minute from an EventBridge rule in femiwiki/infra
+`aws/lambda.tf`. `deploy.yml` sets these variables, the two tokens from this
 repository's secrets:
 
 - `MASTODON_INSTANCE`: e.g. `https://mastodon.social`
@@ -43,12 +43,12 @@ repository's secrets:
 ## mastodon-boost
 
 Boosts mentions of the wiki's Mastodon status account from the accounts in
-`ALLOWED_ACCTS`, so their answers to an alert show on the status account. Private
-and direct mentions cannot be boosted and are skipped. It runs every minute from
-an EventBridge rule in femiwiki/infra `aws/lambda.tf`. `deploy.yml` sets these
-variables, the token from this repository's `MASTODON_BOOST_TOKEN` secret, which
-femiwiki/infra `github/secrets.tf` sets from the `LAMBDA_MASTODON_BOOST_TOKEN`
-item in the 1Password `infra` vault:
+`ALLOWED_ACCTS`, so their answers to an alert show on the status account.
+Private and direct mentions cannot be boosted and are skipped. It runs every
+minute from an EventBridge rule in femiwiki/infra `aws/lambda.tf`. `deploy.yml`
+sets these variables, the token from this repository's `MASTODON_BOOST_TOKEN`
+secret, which femiwiki/infra `github/secrets.tf` sets from the
+`LAMBDA_MASTODON_BOOST_TOKEN` item in the 1Password `infra` vault:
 
 - `MASTODON_INSTANCE`: e.g. `https://mastodon.social`
 - `MASTODON_TOKEN`: scopes `read:notifications write:statuses`
