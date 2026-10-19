@@ -7,8 +7,10 @@ import lambda_function
 from lambda_function import (
     authorized,
     lambda_handler,
+    opens_to_everyone,
     record,
     record_finding,
+    record_ingress,
     render,
     title,
 )
@@ -124,6 +126,86 @@ class TestRecordFinding(unittest.TestCase):
             patch.object(lambda_function, "connect", return_value=(r, BOT)),
         ):
             self.assertEqual(lambda_handler(FINDING, None), {"statusCode": 204})
+        r.create_issue.assert_called_once()
+
+
+INGRESS: dict = {
+    "source": "aws.ec2",
+    "detail-type": "AWS API Call via CloudTrail",
+    "region": "ap-northeast-1",
+    "detail": {
+        "eventSource": "ec2.amazonaws.com",
+        "eventName": "AuthorizeSecurityGroupIngress",
+        "eventTime": "2026-10-15T11:00:00Z",
+        "awsRegion": "ap-northeast-1",
+        "eventID": "11111111-2222-3333-4444-555555555555",
+        "requestParameters": {
+            "groupId": "sg-0123456789abcdef0",
+            "ipPermissions": {
+                "items": [
+                    {
+                        "ipProtocol": "tcp",
+                        "fromPort": 2376,
+                        "toPort": 2376,
+                        "ipRanges": {"items": [{"cidrIp": "0.0.0.0/0"}]},
+                    }
+                ]
+            },
+        },
+    },
+}
+
+
+def ingress(**request: object) -> dict:
+    return {**INGRESS, "detail": {**INGRESS["detail"], "requestParameters": request}}
+
+
+class TestOpensToEveryone(unittest.TestCase):
+    def test_finds_either_family_at_any_depth(self):
+        self.assertTrue(opens_to_everyone(INGRESS["detail"]["requestParameters"]))
+        self.assertTrue(
+            opens_to_everyone(
+                {"ModifySecurityGroupRulesRequest": {"Rules": [{"CidrIpv6": "::/0"}]}}
+            )
+        )
+
+    def test_ignores_narrower_ranges(self):
+        self.assertFalse(opens_to_everyone({"cidrIp": "13.209.1.56/29"}))
+        self.assertFalse(opens_to_everyone({"cidrIp": "0.0.0.0/1"}))
+        self.assertFalse(opens_to_everyone(None))
+
+
+class TestRecordIngress(unittest.TestCase):
+    def test_opens_an_issue_without_details(self):
+        r = repo([])
+        record_ingress(r, INGRESS, "@femiwiki/pager")
+        kwargs = r.create_issue.call_args.kwargs
+        self.assertEqual(kwargs["title"], "World-open inbound rule (10/15 20:00 KST)")
+        self.assertIn("in ap-northeast-1", kwargs["body"])
+        self.assertIn("region=ap-northeast-1#/events/1111", kwargs["body"])
+        self.assertIn("Event 11111111-2222-3333-4444-555555555555", kwargs["body"])
+        self.assertTrue(kwargs["body"].endswith("\n\n@femiwiki/pager"))
+        self.assertEqual(kwargs["labels"], ["alert"])
+        for secret in ("sg-0123456789abcdef0", "2376", "tcp"):
+            self.assertNotIn(secret, kwargs["title"] + kwargs["body"])
+
+    def test_skips_an_event_that_already_has_an_issue(self):
+        existing = issue("World-open inbound rule (10/15 20:00 KST)")
+        existing.body = "Event 11111111-2222-3333-4444-555555555555"
+        r = repo([existing])
+        record_ingress(r, INGRESS)
+        r.create_issue.assert_not_called()
+
+    def test_handler_opens_an_issue_for_a_world_open_rule(self):
+        r = repo([])
+        with (
+            patch.dict(os.environ, {"GITHUB_MENTION": ""}, clear=False),
+            patch.object(lambda_function, "connect", return_value=(r, BOT)) as c,
+        ):
+            self.assertEqual(lambda_handler(INGRESS, None), {"statusCode": 204})
+            narrow = ingress(groupId="sg-1", cidrIp="10.0.0.0/8")
+            self.assertEqual(lambda_handler(narrow, None), {"statusCode": 204})
+        c.assert_called_once()
         r.create_issue.assert_called_once()
 
 
