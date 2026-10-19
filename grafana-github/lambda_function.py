@@ -13,6 +13,12 @@ An EventBridge rule also invokes it for each new IAM Access Analyzer finding,
 and each active finding opens an issue of its own, closed once the finding is
 resolved or archived. The issue says only that one was found and the finding's
 id, since the repository is public; the console shows which.
+
+Another EventBridge rule invokes it for each successful call, in Seoul or Tokyo,
+that adds an inbound rule to a security group or changes any of its rules. A call
+that names 0.0.0.0/0 or ::/0 opens an issue that names only the region and the
+CloudTrail event id, for the same reason. An operator closes it once the rule is
+checked.
 """
 
 import base64
@@ -27,6 +33,7 @@ from github.Repository import Repository
 
 KST = timezone(timedelta(hours=9), "KST")
 LABEL = "alert"
+WORLD = ("0.0.0.0/0", "::/0")
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, int]:
@@ -34,6 +41,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, int]:
     if event.get("source") == "aws.access-analyzer":
         repo, _ = connect()
         record_finding(repo, event, os.environ.get("GITHUB_MENTION", ""))
+        return {"statusCode": 204}
+    if event.get("source") == "aws.ec2":
+        if opens_to_everyone(event["detail"].get("requestParameters")):
+            repo, _ = connect()
+            record_ingress(repo, event, os.environ.get("GITHUB_MENTION", ""))
         return {"statusCode": 204}
 
     headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
@@ -96,6 +108,43 @@ def record_finding(repo: Repository, event: dict[str, Any], mention: str = "") -
     )
     repo.create_issue(
         title=f"External access finding ({start.month}/{start.day} {start:%H:%M} KST)",
+        body=f"{text}\n\n{mention}".strip(),
+        labels=[LABEL],
+    )
+
+
+def opens_to_everyone(value: Any) -> bool:
+    """Whether a request names 0.0.0.0/0 or ::/0 anywhere, whatever its shape."""
+    if isinstance(value, dict):
+        return any(opens_to_everyone(v) for v in value.values())
+    if isinstance(value, list):
+        return any(opens_to_everyone(v) for v in value)
+    return value in WORLD
+
+
+def record_ingress(repo: Repository, event: dict[str, Any], mention: str = "") -> None:
+    """Open an issue for a call that opened an inbound rule to everyone."""
+    detail = event["detail"]
+    marker = f"Event {detail['eventID']}"
+    # EventBridge delivers at least once.
+    if any(
+        marker in (issue.body or "")
+        for issue in repo.get_issues(state="open", labels=[LABEL])
+    ):
+        return
+    region = detail.get("awsRegion") or event.get("region") or "ap-northeast-2"
+    start = (
+        datetime.fromisoformat(detail["eventTime"][:16])
+        .replace(tzinfo=UTC)
+        .astimezone(KST)
+    )
+    console = f"https://{region}.console.aws.amazon.com/cloudtrailv2/home?region={region}#/events/{detail['eventID']}"
+    text = (
+        f"A security group in {region} got an inbound rule open to everyone. "
+        f"Check it in CloudTrail: {console}\n\n{marker}"
+    )
+    repo.create_issue(
+        title=f"World-open inbound rule ({start.month}/{start.day} {start:%H:%M} KST)",
         body=f"{text}\n\n{mention}".strip(),
         labels=[LABEL],
     )

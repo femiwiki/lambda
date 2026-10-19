@@ -65,7 +65,12 @@ later notifications become comments while it is open. New issues get the
 `alert` label. An EventBridge rule in `aws/access-analyzer.tf` also invokes it
 for each IAM Access Analyzer finding: an active one opens an issue of its own
 that says only that one was found, with its id and a console link, and the issue
-closes once the finding is resolved or archived. `deploy.yml` sets:
+closes once the finding is resolved or archived. An EventBridge rule in
+`aws/sg-alerts.tf` invokes it for each security group rule added inbound or
+changed in Seoul or Tokyo: one naming `0.0.0.0/0` or `::/0` opens an issue that
+says only the region and the CloudTrail event id, and an operator closes it once
+checked.
+`deploy.yml` sets:
 
 - `GITHUB_APP_CLIENT_ID`: the alerts GitHub App, installed on femiwiki/infra
   with Issues read and write
