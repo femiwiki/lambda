@@ -15,7 +15,7 @@ from typing import Any
 import boto3
 import html2text
 import requests
-from mastodon import Mastodon, MastodonNetworkError
+from mastodon import Mastodon, MastodonNetworkError, MastodonServerError
 
 USER_AGENT = "femiwiki-lambda-mastodon-discord (+https://github.com/femiwiki/lambda)"
 DISCORD_API = "https://discord.com/api/v10"
@@ -33,8 +33,9 @@ ssm = boto3.client("ssm")
 def lambda_handler(event: Any, context: Any) -> None:
     try:
         run()
-    except MastodonNetworkError as error:
-        # The instance is slow now and then; the next run picks up from the cursor.
+    except (MastodonNetworkError, MastodonServerError) as error:
+        # The instance is slow or down now and then; the next run picks up from
+        # the cursor.
         print(f"skipped this run: {error}")
 
 

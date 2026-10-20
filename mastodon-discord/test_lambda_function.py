@@ -14,7 +14,7 @@ from lambda_function import (
     parse_allowed,
     snowflake,
 )
-from mastodon import MastodonNetworkError
+from mastodon import MastodonNetworkError, MastodonServiceUnavailableError
 from mastodon.return_types import Notification, Status
 from mastodon.types_base import try_cast_recurse
 
@@ -220,10 +220,21 @@ class HandlerTest(unittest.TestCase):
         self.assertEqual((posts, written), ([], []))
         print_.assert_called_once()
 
+    @patch("builtins.print")
+    def test_an_unavailable_instance_skips_the_run(self, print_):
+        posts, written = self.run_handler("10", Unavailable())
+        self.assertEqual((posts, written), ([], []))
+        print_.assert_called_once()
+
 
 class Timeout(dict):
     def __getitem__(self, key):
         raise MastodonNetworkError
+
+
+class Unavailable(dict):
+    def __getitem__(self, key):
+        raise MastodonServiceUnavailableError
 
 
 if __name__ == "__main__":
