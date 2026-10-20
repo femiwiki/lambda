@@ -10,7 +10,12 @@ from lambda_function import (
     normalize_acct,
     parse_allowed,
 )
-from mastodon import MastodonAPIError, MastodonNetworkError, MastodonNotFoundError
+from mastodon import (
+    MastodonAPIError,
+    MastodonNetworkError,
+    MastodonNotFoundError,
+    MastodonServiceUnavailableError,
+)
 from mastodon.return_types import Notification
 from mastodon.types_base import try_cast_recurse
 
@@ -174,10 +179,20 @@ class HandlerTest(unittest.TestCase):
         self.assertEqual(self.written, [])
         print_.assert_called_once()
 
+    def test_an_unavailable_instance_skips_the_run(self, print_):
+        self.run_handler("10", Unavailable())
+        self.assertEqual(self.written, [])
+        print_.assert_called_once()
+
 
 class Timeout(dict):
     def __getitem__(self, key):
         raise MastodonNetworkError
+
+
+class Unavailable(dict):
+    def __getitem__(self, key):
+        raise MastodonServiceUnavailableError
 
 
 if __name__ == "__main__":
