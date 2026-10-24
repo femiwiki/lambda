@@ -9,6 +9,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -22,14 +23,20 @@ jobs:
       - run: uv run --frozen --group lint ty check .
       - env:
           AWS_DEFAULT_REGION: us-east-1
-        run: uv run --frozen python -m unittest discover -s sns-discord -v
+        run: uv run --frozen --with coverage coverage run --append -m unittest discover -s sns-discord -v
       - env:
           AWS_DEFAULT_REGION: ap-northeast-2
-        run: uv run --frozen python -m unittest discover -s mastodon-discord -v
+        run: uv run --frozen --with coverage coverage run --append -m unittest discover -s mastodon-discord -v
       - env:
           AWS_DEFAULT_REGION: ap-northeast-2
-        run: uv run --frozen python -m unittest discover -s mastodon-boost -v
-      - run: uv run --frozen python -m unittest discover -s grafana-github -v
+        run: uv run --frozen --with coverage coverage run --append -m unittest discover -s mastodon-boost -v
+      - run: uv run --frozen --with coverage coverage run --append -m unittest discover -s grafana-github -v
       - env:
           AWS_DEFAULT_REGION: ap-northeast-2
-        run: uv run --frozen python -m unittest discover -s bounce-handler -v
+        run: uv run --frozen --with coverage coverage run --append -m unittest discover -s bounce-handler -v
+
+      - run: uv run --frozen --with coverage coverage xml
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          use_oidc: true
