@@ -1,4 +1,4 @@
-# lambda
+# lambda [![codecov.io status]][codecov.io link]
 
 A monorepo of Femiwiki's AWS Lambda functions.
 
@@ -99,5 +99,7 @@ The source code of _femiwiki/lambda_ is primarily distributed under the
 terms of the [GNU Affero General Public License v3.0] or any later version. See
 [COPYRIGHT] for details.
 
+[codecov.io status]: https://badgen.net/codecov/c/github/femiwiki/lambda
+[codecov.io link]: https://codecov.io/gh/femiwiki/lambda
 [gnu affero general public license v3.0]: LICENSE
 [copyright]: COPYRIGHT

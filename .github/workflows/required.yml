@@ -15,6 +15,7 @@ jobs:
     uses: ./.github/workflows/test.yml
     permissions:
       contents: read
+      id-token: write
 
   long-comments:
     uses: femiwiki/.github/.github/workflows/long-comments.yml@1187b89562343e91f56c809d6ce75e9df96e2d01
