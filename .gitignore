@@ -4,3 +4,7 @@ __pycache__/
 
 # AWS Lambda ZIP file
 /lambda.zip
+
+# Node
+node_modules/
+/chart-renderer/dist/

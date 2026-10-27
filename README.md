@@ -91,6 +91,30 @@ sets:
 - `API_URL`: `https://femiwiki.com/api.php`
 - `TOKEN_PARAMETER`: the SecureString parameter holding the token
 
+## chart-renderer
+
+Renders charts for MediaWiki's [Chart] extension, which posts each chart to
+`$wgChartServiceUrl` and puts the returned HTML into the page. It bundles
+Wikimedia's [chart-renderer] at a pinned commit with esbuild, without its HTTP
+server. It runs on Node.js, unlike the other functions:
+
+```bash
+cd chart-renderer
+npm ci --ignore-scripts
+npm test
+```
+
+Chart cannot add headers to its request, so the URL path carries a JWT that AWS
+STS signs for the wiki's instance role with `GetWebIdentityToken`. The instance
+asks for a fresh one every 15 minutes and each lives an hour, so no secret is
+stored and a leaked URL soon stops working. The function URL is open to anyone,
+and the function verifies the token with the account's JWKS before reading the
+body. `deploy.yml` sets:
+
+- `ISSUER`: the account's issuer for those tokens
+- `AUDIENCE`: `chart-renderer`, the audience the wiki asks for
+- `SUBJECT`: the wiki's instance role
+
 &nbsp;
 
 ---
@@ -99,6 +123,8 @@ The source code of _femiwiki/lambda_ is primarily distributed under the
 terms of the [GNU Affero General Public License v3.0] or any later version. See
 [COPYRIGHT] for details.
 
+[chart]: https://www.mediawiki.org/wiki/Extension:Chart
+[chart-renderer]: https://gitlab.wikimedia.org/repos/mediawiki/services/chart-renderer
 [codecov.io status]: https://badgen.net/codecov/c/github/femiwiki/lambda
 [codecov.io link]: https://codecov.io/gh/femiwiki/lambda
 [gnu affero general public license v3.0]: LICENSE

@@ -1,0 +1,18 @@
+{
+	"name": "chart-renderer",
+	"private": true,
+	"description": "Renders charts for MediaWiki's Chart extension",
+	"scripts": {
+		"build": "esbuild handler.ts --bundle --platform=node --target=node22 --format=cjs --minify --outfile=dist/index.js",
+		"test": "npm run build && node --test"
+	},
+	"dependencies": {
+		"chart-service": "git+https://gitlab.wikimedia.org/repos/mediawiki/services/chart-renderer.git#543b8eec4fa9f56110f3fa3d6957c077e5dc4438",
+		"jose": "^6.1.0"
+	},
+	"devDependencies": {
+		"@types/aws-lambda": "^8.10.152",
+		"@types/node": "^22.18.0",
+		"esbuild": "^0.25.10"
+	}
+}
