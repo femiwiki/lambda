@@ -350,5 +350,18 @@ class TestHandler(unittest.TestCase):
         )
 
 
+class SecretTest(unittest.TestCase):
+    @patch.dict(os.environ, {"WEBHOOK_TOKEN_PARAMETER": "/lambda/grafana-github/t"})
+    @patch.dict(lambda_function._secrets, clear=True)
+    def test_reads_the_named_parameter_once(self):
+        with patch.object(lambda_function, "ssm") as ssm:
+            ssm.get_parameter.return_value = {"Parameter": {"Value": "v"}}
+            self.assertEqual(lambda_function.secret("WEBHOOK_TOKEN"), "v")
+            self.assertEqual(lambda_function.secret("WEBHOOK_TOKEN"), "v")
+        ssm.get_parameter.assert_called_once_with(
+            Name="/lambda/grafana-github/t", WithDecryption=True
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
