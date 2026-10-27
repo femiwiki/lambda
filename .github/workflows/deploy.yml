@@ -98,10 +98,10 @@ jobs:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
         run: |
           test -n "$MASTODON_TOKEN" && test -n "$DISCORD_BOT_TOKEN"
-          jq -n '{Name: "/lambda/mastodon-discord/mastodon_token", Value: env.MASTODON_TOKEN, Type: "SecureString", Overwrite: true}' |
-            aws ssm put-parameter --cli-input-json file:///dev/stdin > /dev/null
-          jq -n '{Name: "/lambda/mastodon-discord/discord_bot_token", Value: env.DISCORD_BOT_TOKEN, Type: "SecureString", Overwrite: true}' |
-            aws ssm put-parameter --cli-input-json file:///dev/stdin > /dev/null
+          jq -n '{Name: "/lambda/mastodon-discord/mastodon_token", Value: env.MASTODON_TOKEN, Type: "SecureString", Overwrite: true}' > "$RUNNER_TEMP/parameter.json"
+          aws ssm put-parameter --cli-input-json "file://$RUNNER_TEMP/parameter.json" > /dev/null
+          jq -n '{Name: "/lambda/mastodon-discord/discord_bot_token", Value: env.DISCORD_BOT_TOKEN, Type: "SecureString", Overwrite: true}' > "$RUNNER_TEMP/parameter.json"
+          aws ssm put-parameter --cli-input-json "file://$RUNNER_TEMP/parameter.json" > /dev/null
           jq -n '{Variables: {
             MASTODON_INSTANCE: "https://mastodon.social",
             MASTODON_TOKEN_PARAMETER: "/lambda/mastodon-discord/mastodon_token",
@@ -117,8 +117,8 @@ jobs:
           MASTODON_TOKEN: ${{ secrets.MASTODON_BOOST_TOKEN }}
         run: |
           test -n "$MASTODON_TOKEN"
-          jq -n '{Name: "/lambda/mastodon-boost/mastodon_token", Value: env.MASTODON_TOKEN, Type: "SecureString", Overwrite: true}' |
-            aws ssm put-parameter --cli-input-json file:///dev/stdin > /dev/null
+          jq -n '{Name: "/lambda/mastodon-boost/mastodon_token", Value: env.MASTODON_TOKEN, Type: "SecureString", Overwrite: true}' > "$RUNNER_TEMP/parameter.json"
+          aws ssm put-parameter --cli-input-json "file://$RUNNER_TEMP/parameter.json" > /dev/null
           jq -n '{Variables: {
             MASTODON_INSTANCE: "https://mastodon.social",
             MASTODON_TOKEN_PARAMETER: "/lambda/mastodon-boost/mastodon_token",
@@ -132,8 +132,8 @@ jobs:
           WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           test -n "$WEBHOOK_URL"
-          jq -n '{Name: "/lambda/sns-discord/webhook_url", Value: env.WEBHOOK_URL, Type: "SecureString", Overwrite: true}' |
-            aws ssm put-parameter --cli-input-json file:///dev/stdin > /dev/null
+          jq -n '{Name: "/lambda/sns-discord/webhook_url", Value: env.WEBHOOK_URL, Type: "SecureString", Overwrite: true}' > "$RUNNER_TEMP/parameter.json"
+          aws ssm put-parameter --cli-input-json "file://$RUNNER_TEMP/parameter.json" > /dev/null
           jq -n '{Variables: {WEBHOOK_URL_PARAMETER: "/lambda/sns-discord/webhook_url"}}' > environment.json
 
       - name: Set the environment of grafana-github
@@ -143,10 +143,10 @@ jobs:
           WEBHOOK_TOKEN: ${{ secrets.ALERTS_WEBHOOK_TOKEN }}
         run: |
           test -n "$GITHUB_APP_PRIVATE_KEY" && test -n "$WEBHOOK_TOKEN"
-          jq -n '{Name: "/lambda/grafana-github/github_app_private_key", Value: env.GITHUB_APP_PRIVATE_KEY, Type: "SecureString", Overwrite: true}' |
-            aws ssm put-parameter --cli-input-json file:///dev/stdin > /dev/null
-          jq -n '{Name: "/lambda/grafana-github/webhook_token", Value: env.WEBHOOK_TOKEN, Type: "SecureString", Overwrite: true}' |
-            aws ssm put-parameter --cli-input-json file:///dev/stdin > /dev/null
+          jq -n '{Name: "/lambda/grafana-github/github_app_private_key", Value: env.GITHUB_APP_PRIVATE_KEY, Type: "SecureString", Overwrite: true}' > "$RUNNER_TEMP/parameter.json"
+          aws ssm put-parameter --cli-input-json "file://$RUNNER_TEMP/parameter.json" > /dev/null
+          jq -n '{Name: "/lambda/grafana-github/webhook_token", Value: env.WEBHOOK_TOKEN, Type: "SecureString", Overwrite: true}' > "$RUNNER_TEMP/parameter.json"
+          aws ssm put-parameter --cli-input-json "file://$RUNNER_TEMP/parameter.json" > /dev/null
           jq -n '{Variables: {
             GITHUB_APP_CLIENT_ID: "Iv23liaEFekWQaJiQIF6",
             GITHUB_APP_PRIVATE_KEY_PARAMETER: "/lambda/grafana-github/github_app_private_key",
@@ -171,7 +171,7 @@ jobs:
             args+=(--environment file://environment.json)
           fi
           aws lambda update-function-configuration --function-name "$FUNCTION" "${args[@]}" > /dev/null
-          rm -f environment.json
+          rm -f environment.json "$RUNNER_TEMP/parameter.json"
           aws lambda wait function-updated --function-name "$FUNCTION"
 
       - run: |
