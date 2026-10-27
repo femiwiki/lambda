@@ -113,13 +113,13 @@ class BoostTest(unittest.TestCase):
 
 ENV = {
     "MASTODON_INSTANCE": INSTANCE,
-    "MASTODON_TOKEN": "m",
     "ALLOWED_ACCTS": "lens0021",
     "CURSOR_PARAMETER": "/mastodon-boost/cursor",
 }
 
 
 @patch.dict(os.environ, ENV)
+@patch.dict(lambda_function._secrets, {"MASTODON_TOKEN": "m"})
 @patch("builtins.print")
 class HandlerTest(unittest.TestCase):
     def run_handler(self, cursor, pages, reblog=None):
@@ -193,6 +193,19 @@ class Timeout(dict):
 class Unavailable(dict):
     def __getitem__(self, key):
         raise MastodonServiceUnavailableError
+
+
+class SecretTest(unittest.TestCase):
+    @patch.dict(os.environ, {"MASTODON_TOKEN_PARAMETER": "/lambda/mastodon-boost/t"})
+    @patch.dict(lambda_function._secrets, clear=True)
+    def test_reads_the_named_parameter_once(self):
+        with patch.object(lambda_function, "ssm") as ssm:
+            ssm.get_parameter.return_value = {"Parameter": {"Value": "m"}}
+            self.assertEqual(lambda_function.secret("MASTODON_TOKEN"), "m")
+            self.assertEqual(lambda_function.secret("MASTODON_TOKEN"), "m")
+        ssm.get_parameter.assert_called_once_with(
+            Name="/lambda/mastodon-boost/t", WithDecryption=True
+        )
 
 
 if __name__ == "__main__":

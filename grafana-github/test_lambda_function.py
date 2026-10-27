@@ -306,7 +306,7 @@ class TestRender(unittest.TestCase):
 
 
 class TestHandler(unittest.TestCase):
-    @patch.dict(os.environ, {"WEBHOOK_TOKEN": "s3cret"})
+    @patch.dict(lambda_function._secrets, {"WEBHOOK_TOKEN": "s3cret"})
     def test_refuses_a_wrong_token(self):
         response = lambda_handler(
             {"headers": {"authorization": "Bearer nope"}, "body": "{}"}, None
@@ -316,12 +316,14 @@ class TestHandler(unittest.TestCase):
     @patch.dict(
         os.environ,
         {
-            "WEBHOOK_TOKEN": "s3cret",
             "GITHUB_REPOSITORY": "femiwiki/infra",
             "GITHUB_APP_CLIENT_ID": "Iv23abc",
-            "GITHUB_APP_PRIVATE_KEY": "unused",
             "GITHUB_MENTION": "@femiwiki/pager",
         },
+    )
+    @patch.dict(
+        lambda_function._secrets,
+        {"WEBHOOK_TOKEN": "s3cret", "GITHUB_APP_PRIVATE_KEY": "unused"},
     )
     def test_records_as_the_app_on_the_repository(self):
         app = MagicMock()

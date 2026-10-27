@@ -157,15 +157,14 @@ class FetchMentionsTest(unittest.TestCase):
 
 ENV = {
     "MASTODON_INSTANCE": INSTANCE,
-    "MASTODON_TOKEN": "m",
     "ALLOWED_ACCTS": "lens0021",
     "CURSOR_PARAMETER": "/mastodon-discord/cursor",
-    "DISCORD_BOT_TOKEN": "d",
     "DISCORD_CHANNEL_ID": "42",
 }
 
 
 @patch.dict(os.environ, ENV)
+@patch.dict(lambda_function._secrets, {"MASTODON_TOKEN": "m", "DISCORD_BOT_TOKEN": "d"})
 class HandlerTest(unittest.TestCase):
     def run_handler(self, cursor, pages, messages=()):
         mastodon = MagicMock()
