@@ -157,15 +157,14 @@ class FetchMentionsTest(unittest.TestCase):
 
 ENV = {
     "MASTODON_INSTANCE": INSTANCE,
-    "MASTODON_TOKEN": "m",
     "ALLOWED_ACCTS": "lens0021",
     "CURSOR_PARAMETER": "/mastodon-discord/cursor",
-    "DISCORD_BOT_TOKEN": "d",
     "DISCORD_CHANNEL_ID": "42",
 }
 
 
 @patch.dict(os.environ, ENV)
+@patch.dict(lambda_function._secrets, {"MASTODON_TOKEN": "m", "DISCORD_BOT_TOKEN": "d"})
 class HandlerTest(unittest.TestCase):
     def run_handler(self, cursor, pages, messages=()):
         mastodon = MagicMock()
@@ -235,6 +234,21 @@ class Timeout(dict):
 class Unavailable(dict):
     def __getitem__(self, key):
         raise MastodonServiceUnavailableError
+
+
+class SecretTest(unittest.TestCase):
+    @patch.dict(
+        os.environ, {"DISCORD_BOT_TOKEN_PARAMETER": "/lambda/mastodon-discord/t"}
+    )
+    @patch.dict(lambda_function._secrets, clear=True)
+    def test_reads_the_named_parameter_once(self):
+        with patch.object(lambda_function, "ssm") as ssm:
+            ssm.get_parameter.return_value = {"Parameter": {"Value": "v"}}
+            self.assertEqual(lambda_function.secret("DISCORD_BOT_TOKEN"), "v")
+            self.assertEqual(lambda_function.secret("DISCORD_BOT_TOKEN"), "v")
+        ssm.get_parameter.assert_called_once_with(
+            Name="/lambda/mastodon-discord/t", WithDecryption=True
+        )
 
 
 if __name__ == "__main__":

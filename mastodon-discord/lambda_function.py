@@ -28,6 +28,16 @@ MATCH_SLACK = timedelta(minutes=2)
 PAGE_LIMIT = 40
 
 ssm = boto3.client("ssm")
+_secrets: dict[str, str] = {}
+
+
+def secret(name: str) -> str:
+    """Reads the secret the deploy workflow wrote to the parameter <name>_PARAMETER."""
+    if name not in _secrets:
+        _secrets[name] = ssm.get_parameter(
+            Name=os.environ[f"{name}_PARAMETER"], WithDecryption=True
+        )["Parameter"]["Value"]
+    return _secrets[name]
 
 
 def lambda_handler(event: Any, context: Any) -> None:
@@ -45,7 +55,7 @@ def run() -> None:
     parameter = os.environ["CURSOR_PARAMETER"]
     channel_id = os.environ["DISCORD_CHANNEL_ID"]
     mastodon = Mastodon(
-        access_token=os.environ["MASTODON_TOKEN"],
+        access_token=secret("MASTODON_TOKEN"),
         api_base_url=instance,
         user_agent=USER_AGENT,
         request_timeout=10,
@@ -53,7 +63,7 @@ def run() -> None:
     discord = requests.Session()
     discord.headers.update(
         {
-            "Authorization": f"Bot {os.environ['DISCORD_BOT_TOKEN']}",
+            "Authorization": f"Bot {secret('DISCORD_BOT_TOKEN')}",
             "User-Agent": USER_AGENT,
         }
     )

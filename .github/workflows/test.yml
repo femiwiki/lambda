@@ -30,7 +30,9 @@ jobs:
       - env:
           AWS_DEFAULT_REGION: ap-northeast-2
         run: uv run --frozen --with coverage coverage run --append -m unittest discover -s mastodon-boost -v
-      - run: uv run --frozen --with coverage coverage run --append -m unittest discover -s grafana-github -v
+      - env:
+          AWS_DEFAULT_REGION: ap-northeast-2
+        run: uv run --frozen --with coverage coverage run --append -m unittest discover -s grafana-github -v
       - env:
           AWS_DEFAULT_REGION: ap-northeast-2
         run: uv run --frozen --with coverage coverage run --append -m unittest discover -s bounce-handler -v

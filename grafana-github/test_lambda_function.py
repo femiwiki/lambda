@@ -306,7 +306,7 @@ class TestRender(unittest.TestCase):
 
 
 class TestHandler(unittest.TestCase):
-    @patch.dict(os.environ, {"WEBHOOK_TOKEN": "s3cret"})
+    @patch.dict(lambda_function._secrets, {"WEBHOOK_TOKEN": "s3cret"})
     def test_refuses_a_wrong_token(self):
         response = lambda_handler(
             {"headers": {"authorization": "Bearer nope"}, "body": "{}"}, None
@@ -316,12 +316,14 @@ class TestHandler(unittest.TestCase):
     @patch.dict(
         os.environ,
         {
-            "WEBHOOK_TOKEN": "s3cret",
             "GITHUB_REPOSITORY": "femiwiki/infra",
             "GITHUB_APP_CLIENT_ID": "Iv23abc",
-            "GITHUB_APP_PRIVATE_KEY": "unused",
             "GITHUB_MENTION": "@femiwiki/pager",
         },
+    )
+    @patch.dict(
+        lambda_function._secrets,
+        {"WEBHOOK_TOKEN": "s3cret", "GITHUB_APP_PRIVATE_KEY": "unused"},
     )
     def test_records_as_the_app_on_the_repository(self):
         app = MagicMock()
@@ -345,6 +347,19 @@ class TestHandler(unittest.TestCase):
         github.get_repo.assert_called_once_with("femiwiki/infra")
         recorded.assert_called_once_with(
             github.get_repo.return_value, BOT, payload(), "@femiwiki/pager"
+        )
+
+
+class SecretTest(unittest.TestCase):
+    @patch.dict(os.environ, {"WEBHOOK_TOKEN_PARAMETER": "/lambda/grafana-github/t"})
+    @patch.dict(lambda_function._secrets, clear=True)
+    def test_reads_the_named_parameter_once(self):
+        with patch.object(lambda_function, "ssm") as ssm:
+            ssm.get_parameter.return_value = {"Parameter": {"Value": "v"}}
+            self.assertEqual(lambda_function.secret("WEBHOOK_TOKEN"), "v")
+            self.assertEqual(lambda_function.secret("WEBHOOK_TOKEN"), "v")
+        ssm.get_parameter.assert_called_once_with(
+            Name="/lambda/grafana-github/t", WithDecryption=True
         )
 
 

@@ -28,12 +28,25 @@ import os
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
+import boto3
 from github import Auth, GithubIntegration
 from github.Repository import Repository
 
 KST = timezone(timedelta(hours=9), "KST")
 LABEL = "alert"
 WORLD = ("0.0.0.0/0", "::/0")
+
+ssm = boto3.client("ssm")
+_secrets: dict[str, str] = {}
+
+
+def secret(name: str) -> str:
+    """Reads the secret the deploy workflow wrote to the parameter <name>_PARAMETER."""
+    if name not in _secrets:
+        _secrets[name] = ssm.get_parameter(
+            Name=os.environ[f"{name}_PARAMETER"], WithDecryption=True
+        )["Parameter"]["Value"]
+    return _secrets[name]
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, int]:
@@ -49,7 +62,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, int]:
         return {"statusCode": 204}
 
     headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
-    if not authorized(headers.get("authorization", ""), os.environ["WEBHOOK_TOKEN"]):
+    if not authorized(headers.get("authorization", ""), secret("WEBHOOK_TOKEN")):
         return {"statusCode": 401}
 
     body = event.get("body") or ""
@@ -66,7 +79,7 @@ def connect() -> tuple[Repository, str]:
     owner, name = os.environ["GITHUB_REPOSITORY"].split("/")
     app = GithubIntegration(
         auth=Auth.AppAuth(
-            os.environ["GITHUB_APP_CLIENT_ID"], os.environ["GITHUB_APP_PRIVATE_KEY"]
+            os.environ["GITHUB_APP_CLIENT_ID"], secret("GITHUB_APP_PRIVATE_KEY")
         )
     )
     bot = f"{app.get_app().slug}[bot]"
