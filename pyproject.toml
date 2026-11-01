@@ -13,11 +13,11 @@ lint = [
   "ty==0.0.84",
 ]
 mastodon-boost = [
-  "mastodon-py>=2.2.2",
+  "mastodon-py>=2.3.3",
 ]
 mastodon-discord = [
   "html2text>=2025.4.15",
-  "mastodon-py>=2.2.2",
+  "mastodon-py>=2.3.3",
   "requests>=2.34.2",
 ]
 sns-discord = [
