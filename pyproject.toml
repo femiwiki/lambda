@@ -10,7 +10,7 @@ grafana-github = [
 ]
 lint = [
   "ruff==0.16.9",
-  "ty==0.0.84",
+  "ty==0.0.91",
 ]
 mastodon-boost = [
   "mastodon-py>=2.2.2",
