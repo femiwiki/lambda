@@ -9,6 +9,7 @@ from lambda_function import (
     lambda_handler,
     opens_to_everyone,
     record,
+    record_expiry,
     record_finding,
     record_ingress,
     render,
@@ -365,3 +366,59 @@ class SecretTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+EXPIRY: dict = {
+    "source": "aws.rolesanywhere",
+    "detail-type": "Roles Anywhere Certificate Expiration State Change",
+    "time": "2026-12-25T00:30:00Z",
+    "region": "ap-northeast-2",
+    "detail": {
+        "certificate-serial-number": "00936EACBE07F201DF",
+        "days-to-expiry": 44,
+        "issuer": "O=Femiwiki,CN=Femiwiki IAM Roles Anywhere",
+    },
+}
+
+
+class TestRecordExpiry(unittest.TestCase):
+    def test_opens_an_issue(self):
+        r = repo([])
+        record_expiry(r, EXPIRY, "@femiwiki/pager")
+        kwargs = r.create_issue.call_args.kwargs
+        self.assertEqual(
+            kwargs["title"], "Roles Anywhere certificate expires in 44 days (12/25 KST)"
+        )
+        self.assertIn("CN=Femiwiki IAM Roles Anywhere", kwargs["body"])
+        self.assertIn("Certificate 00936EACBE07F201DF", kwargs["body"])
+        self.assertTrue(kwargs["body"].endswith("\n\n@femiwiki/pager"))
+        self.assertEqual(kwargs["labels"], ["alert"])
+
+    def test_drops_repeats_while_the_issue_is_open(self):
+        existing = issue("Roles Anywhere certificate expires in 44 days (12/25 KST)")
+        existing.body = "Certificate 00936EACBE07F201DF"
+        r = repo([existing])
+        record_expiry(
+            r, {**EXPIRY, "detail": {**EXPIRY["detail"], "days-to-expiry": 43}}
+        )
+        r.create_issue.assert_not_called()
+
+    def test_another_certificate_gets_its_own_issue(self):
+        existing = issue("Roles Anywhere certificate expires in 44 days (12/25 KST)")
+        existing.body = "Certificate 00936EACBE07F201DF"
+        r = repo([existing])
+        other = {
+            **EXPIRY,
+            "detail": {**EXPIRY["detail"], "certificate-serial-number": "01"},
+        }
+        record_expiry(r, other)
+        r.create_issue.assert_called_once()
+
+    def test_handler_skips_the_token_for_eventbridge(self):
+        r = repo([])
+        with (
+            patch.dict(os.environ, {"GITHUB_MENTION": ""}, clear=False),
+            patch.object(lambda_function, "connect", return_value=(r, BOT)),
+        ):
+            self.assertEqual(lambda_handler(EXPIRY, None), {"statusCode": 204})
+        r.create_issue.assert_called_once()
