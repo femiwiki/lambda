@@ -19,6 +19,11 @@ that adds an inbound rule to a security group or changes any of its rules. A cal
 that names 0.0.0.0/0 or ::/0 opens an issue that names only the region and the
 CloudTrail event id, for the same reason. An operator closes it once the rule is
 checked.
+
+IAM Roles Anywhere sends an event while a certificate it trusts nears expiry,
+from 45 days before. The first event for a certificate opens an issue, and the
+repeats are dropped while it is open. The pull request that deploys new
+certificates closes it.
 """
 
 import base64
@@ -59,6 +64,10 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, int]:
         if opens_to_everyone(event["detail"].get("requestParameters")):
             repo, _ = connect()
             record_ingress(repo, event, os.environ.get("GITHUB_MENTION", ""))
+        return {"statusCode": 204}
+    if event.get("source") == "aws.rolesanywhere":
+        repo, _ = connect()
+        record_expiry(repo, event, os.environ.get("GITHUB_MENTION", ""))
         return {"statusCode": 204}
 
     headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
@@ -158,6 +167,35 @@ def record_ingress(repo: Repository, event: dict[str, Any], mention: str = "") -
     )
     repo.create_issue(
         title=f"World-open inbound rule ({start.month}/{start.day} {start:%H:%M} KST)",
+        body=f"{text}\n\n{mention}".strip(),
+        labels=[LABEL],
+    )
+
+
+def record_expiry(repo: Repository, event: dict[str, Any], mention: str = "") -> None:
+    """Open one issue for a certificate nearing expiry, however often it is reported."""
+    detail = event["detail"]
+    serial = detail["certificate-serial-number"]
+    marker = f"Certificate {serial}"
+    if any(
+        marker in (issue.body or "")
+        for issue in repo.get_issues(state="open", labels=[LABEL])
+    ):
+        return
+    days = detail.get("days-to-expiry")
+    issuer = detail.get("issuer", "an unknown issuer")
+    start = (
+        datetime.fromisoformat(event["time"][:16]).replace(tzinfo=UTC).astimezone(KST)
+    )
+    text = (
+        f"An IAM Roles Anywhere certificate from {issuer} expires in {days} days. "
+        "A docker deploy that raises the generation issues new container "
+        "certificates; the CA itself comes from the aws workspace.\n\n"
+        f"{marker}"
+    )
+    repo.create_issue(
+        title=f"Roles Anywhere certificate expires in {days} days "
+        f"({start.month}/{start.day} KST)",
         body=f"{text}\n\n{mention}".strip(),
         labels=[LABEL],
     )
